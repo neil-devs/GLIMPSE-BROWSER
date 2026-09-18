@@ -1,0 +1,33 @@
+{
+  "name": "glimpse-browser",
+  "version": "1.0.0",
+  "description": "Glimpse Browser — A desktop browser with intelligent link prefetching",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=@glimpse/cloud-api",
+    "dev:desktop": "turbo run dev --filter=@glimpse/desktop",
+    "build": "turbo run build",
+    "build:api": "turbo run build --filter=@glimpse/cloud-api",
+    "build:desktop": "turbo run build --filter=@glimpse/desktop",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rimraf node_modules",
+    "format": "prettier --write \"**/*.{js,jsx,json,md,css}\"",
+    "prepare": "npm install --workspaces"
+  },
+  "devDependencies": {
+    "turbo": "2.1.2",
+    "prettier": "3.3.3",
+    "rimraf": "6.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "packageManager": "npm@10.8.0"
+}

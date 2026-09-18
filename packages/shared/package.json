@@ -1,0 +1,21 @@
+{
+  "name": "@glimpse/shared",
+  "version": "1.0.0",
+  "description": "Shared constants, validators, IPC types, and error classes for Glimpse Browser",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./constants": "./src/constants.js",
+    "./ipc-types": "./src/ipc-types.js",
+    "./validators": "./src/validators.js",
+    "./errors": "./src/errors.js"
+  },
+  "files": [
+    "src/"
+  ],
+  "dependencies": {
+    "zod": "3.23.8"
+  },
+  "license": "MIT",
+  "private": true
+}

@@ -1,0 +1,72 @@
+{
+  "version": "0.1.0",
+  "trainedAt": "2024-01-01T00:00:00.000Z",
+  "modelType": "gradient_boosted_trees",
+  "features": [
+    "link_position_norm",
+    "is_top_3",
+    "domain_reputation",
+    "engine_google",
+    "engine_bing",
+    "engine_duckduckgo",
+    "engine_yahoo",
+    "engine_baidu",
+    "engine_yandex",
+    "query_length_short",
+    "query_length_medium",
+    "query_length_long",
+    "was_prefetched",
+    "prefetch_duration_norm"
+  ],
+  "featureCount": 14,
+  "hyperparameters": {
+    "nEstimators": 3,
+    "maxDepth": 2,
+    "learningRate": 0.1
+  },
+  "metrics": {
+    "accuracy": 0.72,
+    "precision": 0.68,
+    "recall": 0.75,
+    "f1": 0.71,
+    "aucRoc": 0.78
+  },
+  "initialPrediction": -0.847,
+  "learningRate": 0.1,
+  "threshold": 0.5,
+  "trees": [
+    {
+      "round": 0,
+      "leafValues": {"0": -0.15, "1": 0.35},
+      "root": {
+        "type": "split",
+        "featureIndex": 0,
+        "threshold": 0.667,
+        "left": {"type": "leaf", "prediction": 0, "distribution": null},
+        "right": {"type": "leaf", "prediction": 1, "distribution": null}
+      }
+    },
+    {
+      "round": 1,
+      "leafValues": {"0": -0.12, "1": 0.28},
+      "root": {
+        "type": "split",
+        "featureIndex": 2,
+        "threshold": 0.75,
+        "left": {"type": "leaf", "prediction": 0, "distribution": null},
+        "right": {"type": "leaf", "prediction": 1, "distribution": null}
+      }
+    },
+    {
+      "round": 2,
+      "leafValues": {"0": -0.08, "1": 0.18},
+      "root": {
+        "type": "split",
+        "featureIndex": 1,
+        "threshold": 0.5,
+        "left": {"type": "leaf", "prediction": 0, "distribution": null},
+        "right": {"type": "leaf", "prediction": 1, "distribution": null}
+      }
+    }
+  ]
+}

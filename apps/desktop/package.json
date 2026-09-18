@@ -1,0 +1,37 @@
+{
+  "name": "@glimpse/desktop",
+  "version": "1.0.0",
+  "description": "Glimpse Browser — Desktop application (Electron)",
+  "main": "src/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "package": "electron-builder --win",
+    "package:all": "electron-builder --win --mac --linux",
+    "test": "jest --coverage",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@glimpse/shared": "*",
+    "better-sqlite3": "11.3.0",
+    "electron-log": "5.2.0",
+    "uuid": "10.0.0"
+  },
+  "devDependencies": {
+    "electron": "32.1.2",
+    "electron-builder": "25.0.5",
+    "electron-vite": "2.3.0",
+    "@vitejs/plugin-react": "4.3.1",
+    "eslint": "8.57.0",
+    "jest": "29.7.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "vite": "5.4.8",
+    "zustand": "4.5.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
