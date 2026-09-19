@@ -14,10 +14,10 @@ const logger = require('../utils/logger');
 
 /**
  * Recursively serialize a decision tree node to a plain object.
- * ml-decisiontree trees have a root property with .left, .right, .splitColumn,
+ * ml-cart trees have a root property with .left, .right, .splitColumn,
  * .splitValue, and .distribution (leaf) properties.
  *
- * @param {object} node - ml-decisiontree tree node
+ * @param {object} node - ml-cart tree node
  * @returns {object} Serialized node
  */
 function serializeTreeNode(node) {

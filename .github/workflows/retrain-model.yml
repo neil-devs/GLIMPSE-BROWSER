@@ -1,0 +1,38 @@
+name: Retrain ML Model
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Every Sunday at 02:00 UTC
+  workflow_dispatch:
+
+env:
+  NODE_ENV: production
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Run model retraining
+        run: npm run job:retrain --workspace=@glimpse/cloud-api
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+      - name: Upload trained model
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-model-${{ github.run_id }}
+          path: apps/cloud-api/src/ml/models/latest.json
+          retention-days: 90

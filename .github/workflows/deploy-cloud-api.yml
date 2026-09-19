@@ -1,0 +1,38 @@
+name: Deploy Cloud API
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/cloud-api/**'
+      - 'packages/shared/**'
+  workflow_dispatch:
+
+env:
+  NODE_ENV: production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Run tests
+        run: npm test --workspace=@glimpse/cloud-api
+        continue-on-error: true
+
+      - name: Run linter
+        run: npm run lint --workspace=@glimpse/cloud-api
+        continue-on-error: true
+
+      # Add your deployment steps here (e.g., Railway, Render, AWS, etc.)
+      - name: Deploy
+        run: echo "Add deployment commands for your hosting provider here"

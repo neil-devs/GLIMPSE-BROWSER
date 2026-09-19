@@ -86,7 +86,7 @@ The lookup also handles `www.` prefixes and subdomain stripping (`en.wikipedia.o
 
 ### Training Algorithm
 
-The training pipeline implements gradient boosting from scratch using `ml-decisiontree` for regression tree stumps:
+The training pipeline implements gradient boosting from scratch using `ml-cart` for individual tree stumps:
 
 ```
 Input: X (N × 14 feature matrix), y (N binary labels)
@@ -95,7 +95,7 @@ Input: X (N × 14 feature matrix), y (N binary labels)
 2. For round t = 1 to T:
    a. Compute probabilities: pᵢ = σ(Fᵢ)     # sigmoid
    b. Compute residuals: rᵢ = yᵢ - pᵢ       # negative gradient
-   c. Fit tree hₜ to residuals               # ml-decisiontree DecisionTreeRegression
+   c. Fit tree hₜ to residuals               # ml-cart DecisionTreeClassifier
    d. Compute leaf values: γ = mean(rᵢ) per leaf
    e. Update: Fᵢ += η · γ(hₜ(xᵢ))          # learning rate × leaf value
 3. Output: ensemble of T trees + initial prediction + learning rate

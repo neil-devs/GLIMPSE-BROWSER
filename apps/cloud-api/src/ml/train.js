@@ -1,14 +1,14 @@
 /**
  * @fileoverview ML model training.
  * Implements a Gradient Boosted Decision Tree ensemble in pure JavaScript.
- * Uses ml-decisiontree for individual regression tree stumps and builds the ensemble
+ * Uses ml-cart for individual decision tree stumps and builds the ensemble
  * via gradient boosting with logistic loss.
  * @module cloud-api/ml/train
  */
 
 'use strict';
 
-const { DecisionTreeRegression } = require('ml-decisiontree');
+const { DecisionTreeClassifier } = require('ml-cart');
 const { buildTrainingDataset, FEATURE_NAMES } = require('./feature-engineer');
 const logger = require('../utils/logger');
 
@@ -119,14 +119,17 @@ async function trainModel(rawRows, options = {}) {
       residuals[i] = trainY[i] - probs[i];
     }
 
-    /* Fit a regression tree to the continuous pseudo-residuals */
-    const tree = new DecisionTreeRegression({
+    /* Fit a decision tree to the residuals */
+    const tree = new DecisionTreeClassifier({
       maxDepth,
       minNumSamples: 5,
     });
 
+    /* Convert residuals to binary labels for the tree */
+    const residualLabels = residuals.map(r => r >= 0 ? 1 : 0);
+
     try {
-      tree.train(trainX, residuals);
+      tree.train(trainX, residualLabels);
     } catch (err) {
       logger.debug(`Tree ${round} training failed, skipping`, { error: err.message });
       continue;

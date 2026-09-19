@@ -14,6 +14,7 @@ const {
   HISTORY_SOURCE,
   SYNC_ENTITY_TYPES,
   SYNC_OPERATIONS,
+  SYNC_BATCH_SIZE,
 } = require('./constants');
 
 /* ── Primitives ─────────────────────────────────────────────────── */
@@ -87,7 +88,7 @@ const uuidSchema = z.string().uuid('Invalid UUID');
 const positiveIntSchema = z.number().int().positive();
 
 /** Non-negative integer */
-const nonNegativeIntSchema = z.number().int().nonneg();
+const nonNegativeIntSchema = z.number().int().nonnegative();
 
 /** ISO date string */
 const isoDateSchema = z.string().datetime({ message: 'Invalid ISO 8601 date' });
@@ -212,7 +213,7 @@ const prefetchPerformanceSchema = z.object({
   status: z.enum(['success', 'failed', 'cancelled']),
   failureReason: z.string().max(500).optional().nullable(),
   networkType: z.enum(['wifi', 'ethernet', 'cellular', 'unknown']).optional(),
-  availableBandwidthMbps: z.number().nonneg().optional(),
+  availableBandwidthMbps: z.number().nonnegative().optional(),
 });
 
 const pageLoadSchema = z.object({
@@ -289,7 +290,7 @@ const historyEntrySchema = z.object({
 
 const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(50),
-  offset: z.coerce.number().int().nonneg().default(0),
+  offset: z.coerce.number().int().nonnegative().default(0),
 });
 
 module.exports = {
@@ -337,6 +338,3 @@ module.exports = {
   /* Pagination */
   paginationSchema,
 };
-
-// Re-export the SYNC_BATCH_SIZE used in schemas internally
-const { SYNC_BATCH_SIZE } = require('./constants');

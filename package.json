@@ -8,26 +8,26 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
-    "dev:api": "turbo run dev --filter=@glimpse/cloud-api",
-    "dev:desktop": "turbo run dev --filter=@glimpse/desktop",
-    "build": "turbo run build",
-    "build:api": "turbo run build --filter=@glimpse/cloud-api",
-    "build:desktop": "turbo run build --filter=@glimpse/desktop",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "clean": "turbo run clean && rimraf node_modules",
-    "format": "prettier --write \"**/*.{js,jsx,json,md,css}\"",
-    "prepare": "npm install --workspaces"
+    "dev:desktop": "turbo run dev --filter=desktop",
+    "dev:api": "turbo run dev --filter=cloud-api",
+    "build:desktop": "turbo run build --filter=desktop",
+    "build:win": "turbo run build:win --filter=desktop",
+    "install:all": "npm install --workspaces",
+    "test": "turbo run test"
   },
   "devDependencies": {
-    "turbo": "2.1.2",
     "prettier": "3.3.3",
-    "rimraf": "6.0.1"
+    "rimraf": "6.0.1",
+    "turbo": "^2.11.1"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "packageManager": "npm@10.8.0"
+  "packageManager": "npm@10.8.0",
+  "dependencies": {
+    "electron": "44.4.2",
+    "morgan": "1.12.1",
+    "uuid": "14.0.2"
+  }
 }
