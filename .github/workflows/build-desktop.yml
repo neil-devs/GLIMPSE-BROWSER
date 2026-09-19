@@ -32,16 +32,40 @@ jobs:
         run: npx electron-rebuild
         working-directory: apps/desktop
 
-      - name: Build desktop app
-        run: npm run build:desktop
+      - name: Build Windows desktop app
+        run: npm run build:win --workspace=@glimpse/desktop
 
-      - name: Package Windows executable
-        run: npx electron-builder --win --publish never
-        working-directory: apps/desktop
-
-      - name: Upload artifact
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: glimpse-browser-windows
-          path: apps/desktop/release/*.exe
+          path: apps/desktop/dist/*.exe
+          retention-days: 30
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild
+        working-directory: apps/desktop
+
+      - name: Build Mac desktop app
+        run: npm run build:mac --workspace=@glimpse/desktop
+
+      - name: Upload Mac artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: glimpse-browser-mac
+          path: apps/desktop/dist/*.dmg
           retention-days: 30

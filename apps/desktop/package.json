@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:win": "electron-vite build && electron-builder --win",
+    "build:mac": "electron-vite build && electron-builder --mac",
     "start": "electron-vite preview",
     "package": "electron-builder --win",
     "package:all": "electron-builder --win --mac --linux",
