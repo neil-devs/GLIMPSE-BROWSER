@@ -1,0 +1,33 @@
+.prefetch-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--success-bg);
+  font-size: var(--font-size-xs);
+  color: var(--success);
+  cursor: default;
+  user-select: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.prefetch-indicator__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.prefetch-indicator__dot.active {
+  animation: pulse 1.5s ease infinite;
+}
+
+.prefetch-indicator__count {
+  font-weight: 600;
+}
+
+.prefetch-indicator__label {
+  opacity: 0.8;
+}

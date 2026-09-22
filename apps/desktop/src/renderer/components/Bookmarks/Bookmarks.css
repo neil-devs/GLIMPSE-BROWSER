@@ -1,0 +1,29 @@
+.bookmarks-panel__header { padding: 12px; display: flex; gap: 8px; }
+.bookmarks-panel__search { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; }
+.bookmarks-panel__search span { font-size: 13px; opacity: 0.5; }
+.bookmarks-panel__search input { flex: 1; border: none; background: none; color: var(--text-primary); font-size: var(--font-size-sm); outline: none; padding: 0; }
+.bookmarks-panel__search input:focus { box-shadow: none; }
+.bookmarks-panel__add-folder { display: flex; gap: 8px; padding: 0 12px 12px; }
+.bookmarks-panel__add-folder input { flex: 1; }
+.bookmarks-panel__list { overflow-y: auto; flex: 1; }
+.bookmarks-panel__empty { text-align: center; padding: 48px 16px; color: var(--text-muted); }
+.bookmarks-panel__empty span { font-size: 32px; display: block; margin-bottom: 12px; opacity: 0.4; }
+
+.bookmark-item { display: flex; align-items: center; gap: 10px; padding: 7px 16px; cursor: pointer; transition: background var(--transition-fast); }
+.bookmark-item:hover { background: var(--bg-hover); }
+.bookmark-item__favicon { width: 16px; height: 16px; flex-shrink: 0; }
+.bookmark-item__favicon img { width: 16px; height: 16px; border-radius: 2px; }
+.bookmark-item__title { flex: 1; font-size: var(--font-size-sm); }
+.bookmark-item__actions { display: flex; opacity: 0; }
+.bookmark-item:hover .bookmark-item__actions { opacity: 1; }
+.bookmark-item__actions .btn-icon { width: 24px; height: 24px; font-size: 11px; }
+
+.bookmark-folder { margin-bottom: 2px; }
+.bookmark-folder__header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer; font-size: var(--font-size-sm); transition: background var(--transition-fast); }
+.bookmark-folder__header:hover { background: var(--bg-hover); }
+.bookmark-folder__arrow { font-size: 10px; color: var(--text-muted); width: 12px; }
+.bookmark-folder__icon { font-size: 14px; }
+.bookmark-folder__name { flex: 1; font-weight: 500; }
+.bookmark-folder__count { font-size: var(--font-size-xs); color: var(--text-muted); }
+.bookmark-folder__children { padding-left: 16px; }
+.bookmark-folder__empty { font-size: var(--font-size-xs); color: var(--text-muted); padding: 4px 16px; font-style: italic; }

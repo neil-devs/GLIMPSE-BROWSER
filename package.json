@@ -8,14 +8,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:desktop": "turbo run dev --filter=desktop",
-    "dev:api": "turbo run dev --filter=cloud-api",
-    "build:desktop": "turbo run build --filter=desktop",
-    "build:win": "turbo run build:win --filter=desktop",
+    "dev:desktop": "turbo run dev --filter=@glimpse/desktop",
+    "dev:api": "turbo run dev --filter=@glimpse/cloud-api",
+    "build:desktop": "turbo run build --filter=@glimpse/desktop",
+    "build:win": "turbo run build:win --filter=@glimpse/desktop",
+    "build:mac": "turbo run build:mac --filter=@glimpse/desktop",
     "install:all": "npm install --workspaces",
     "test": "turbo run test"
   },
   "devDependencies": {
+    "electron": "^33.4.11",
     "prettier": "3.3.3",
     "rimraf": "6.0.1",
     "turbo": "^2.11.1"
@@ -26,7 +28,6 @@
   },
   "packageManager": "npm@10.8.0",
   "dependencies": {
-    "electron": "44.4.2",
     "morgan": "1.12.1",
     "uuid": "14.0.2"
   }

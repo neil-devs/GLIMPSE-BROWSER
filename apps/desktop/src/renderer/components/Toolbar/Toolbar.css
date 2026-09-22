@@ -1,0 +1,20 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.toolbar__downloads {
+  position: relative;
+}
+
+.toolbar__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  font-size: 9px;
+  padding: 0 3px;
+}

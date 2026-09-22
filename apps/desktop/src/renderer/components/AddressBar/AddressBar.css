@@ -1,0 +1,73 @@
+.address-bar {
+  display: flex;
+  align-items: center;
+  height: var(--addressbar-height);
+  padding: 0 8px;
+  gap: 6px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: no-drag;
+}
+
+.nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nav-controls__btn {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+}
+
+.address-bar__form {
+  flex: 1;
+  display: flex;
+}
+
+.address-bar__input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-address-bar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0 6px 0 12px;
+  height: 34px;
+  transition: all var(--transition);
+}
+
+.address-bar__input-wrapper.focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+  background: var(--bg-input-focus);
+}
+
+.address-bar__lock {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.address-bar__lock.secure { opacity: 0.6; }
+.address-bar__lock.insecure { color: var(--warning); }
+
+.address-bar__input {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  outline: none;
+  padding: 0;
+  min-width: 0;
+}
+
+.address-bar__input::placeholder {
+  color: var(--text-muted);
+}
+
+.address-bar__input:focus {
+  box-shadow: none;
+}

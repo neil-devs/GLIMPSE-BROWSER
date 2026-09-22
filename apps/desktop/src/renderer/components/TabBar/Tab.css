@@ -1,0 +1,150 @@
+.tab-bar {
+  display: flex;
+  align-items: center;
+  height: var(--tab-height);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  gap: 2px;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.tab-bar__tabs {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow-x: auto;
+  gap: 2px;
+  scrollbar-width: none;
+}
+
+.tab-bar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar__new {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.tab-bar__new:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Individual Tab ─────────────────────────────────────────────── */
+
+.tab {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  gap: 8px;
+  cursor: pointer;
+  min-width: var(--tab-min-width);
+  max-width: var(--tab-max-width);
+  flex-shrink: 0;
+  transition: background var(--transition-fast);
+  position: relative;
+}
+
+.tab:hover {
+  background: var(--bg-tab-hover);
+}
+
+.tab--active {
+  background: var(--bg-tab-active);
+}
+
+.tab--active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.tab--pinned {
+  min-width: var(--tab-pinned-width);
+  max-width: var(--tab-pinned-width);
+  padding: 0;
+  justify-content: center;
+}
+
+.tab__favicon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tab__favicon img {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
+
+.tab__globe {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.tab__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.tab__title {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab--active .tab__title {
+  color: var(--text-primary);
+}
+
+.tab__audio {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.tab__close {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 14px;
+  color: var(--text-muted);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.tab:hover .tab__close,
+.tab--active .tab__close {
+  opacity: 1;
+}
+
+.tab__close:hover {
+  background: var(--error-bg);
+  color: var(--error);
+}

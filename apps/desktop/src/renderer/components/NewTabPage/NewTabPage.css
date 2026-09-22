@@ -1,0 +1,162 @@
+.new-tab-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg-primary);
+  padding: 40px;
+}
+
+.new-tab-page__content {
+  text-align: center;
+  width: 100%;
+  max-width: 600px;
+}
+
+.new-tab-page__logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.new-tab-page__logo-icon {
+  font-size: 36px;
+}
+
+.new-tab-page__title {
+  font-size: 36px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.new-tab-page__greeting {
+  color: var(--text-secondary);
+  font-size: var(--font-size-lg);
+  margin-bottom: 24px;
+}
+
+.new-tab-page__search {
+  margin-bottom: 32px;
+}
+
+.new-tab-page__search-input {
+  width: 100%;
+  height: 48px;
+  border-radius: var(--radius-full);
+  padding: 0 24px;
+  font-size: var(--font-size-lg);
+  background: var(--bg-address-bar);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  transition: all var(--transition);
+}
+
+.new-tab-page__search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-light), 0 4px 24px var(--shadow);
+}
+
+/* Speed Dial */
+.speed-dial {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.speed-dial__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px;
+  border-radius: var(--radius);
+  transition: background var(--transition);
+}
+
+.speed-dial__item:hover {
+  background: var(--bg-hover);
+}
+
+.speed-dial__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-address-bar);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.speed-dial__icon img {
+  border-radius: 4px;
+}
+
+.speed-dial__letter {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+}
+
+.speed-dial__name {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  max-width: 100%;
+}
+
+/* Recent History */
+.recent-history {
+  text-align: left;
+}
+
+.recent-history__title {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.recent-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recent-history__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.recent-history__item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.recent-history__favicon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.recent-history__favicon img {
+  border-radius: 2px;
+}

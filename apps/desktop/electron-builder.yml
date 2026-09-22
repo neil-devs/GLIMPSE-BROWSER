@@ -1,6 +1,31 @@
+appId: com.glimpse.browser
+productName: Glimpse Browser
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - '!node_modules/**/*'
+asarUnpack:
+  - '**/*.node'
 win:
   target: nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
 mac:
   target: dmg
   icon: build/icon.icns
   category: public.app-category.utilities
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: build/icon.png
+  category: Network
+npmRebuild: true
+publish:
+  provider: generic
+  url: https://update.glimpse.dev
