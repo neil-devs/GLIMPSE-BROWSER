@@ -1,60 +1,50 @@
 /**
- * @fileoverview Root App component.
- * Assembles the chrome UI shell: TitleBar → TabBar → AddressBar → Sidebar + Notifications.
- * This renders in the Chrome WebContentsView (108px tall) — NOT in tab views.
+ * @fileoverview Root App component — Glimpse Browser chrome shell.
+ * Assembles: TabBar → AddressBar → Toolbar → (Sidebar + Notifications).
+ * Renders inside the Chrome WebContentsView.
  */
 
 import React, { useEffect } from 'react';
-import TitleBar from './components/TitleBar';
 import TabBar from './components/TabBar';
 import AddressBar from './components/AddressBar';
 import Toolbar from './components/Toolbar';
 import Sidebar from './components/Sidebar';
-import PrefetchIndicator from './components/PrefetchIndicator';
 import Notifications from './components/Notifications';
 import useUiStore from './store/ui-store';
 import './styles/global.css';
+import './App.css';
 
 export default function App() {
   const theme = useUiStore((s) => s.theme);
 
-  /* Apply theme on mount */
+  /* Apply theme attribute */
   useEffect(() => {
-    const effectiveTheme =
+    const effective =
       theme === 'system'
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         : theme;
-    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    document.documentElement.setAttribute('data-theme', effective);
   }, [theme]);
 
-  /* Load saved theme from settings on first mount */
+  /* Load saved theme on mount */
   useEffect(() => {
-    const loadTheme = async () => {
+    (async () => {
       try {
         const result = await window.glimpse.settings.get('theme', 'dark');
-        if (result.success && result.data) {
+        if (result?.success && result.data) {
           useUiStore.getState().setTheme(result.data);
         }
       } catch {
-        /* Use default dark theme */
+        /* default dark */
       }
-    };
-    loadTheme();
+    })();
   }, []);
 
   return (
-    <div id="glimpse-chrome">
-      <TitleBar />
-
-      <div className="chrome-toolbar-row">
+    <div className="app">
+      <div className="app__chrome">
         <TabBar />
-      </div>
-
-      <div className="chrome-addressbar-row">
         <AddressBar />
-        <PrefetchIndicator />
         <Toolbar />
       </div>
 

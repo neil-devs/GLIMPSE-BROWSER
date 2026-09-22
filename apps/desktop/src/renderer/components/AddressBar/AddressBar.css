@@ -1,73 +1,75 @@
-.address-bar {
+/* ═══════════════════════════════════════════════════════════════
+   AddressBar — Chrome 2025 pill-shaped URL bar
+   ═══════════════════════════════════════════════════════════════ */
+
+.addressbar {
   display: flex;
   align-items: center;
-  height: var(--addressbar-height);
-  padding: 0 8px;
-  gap: 6px;
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border);
+  height: var(--address-bar-height);
+  padding: 0 var(--space-5);
+  gap: var(--space-4);
+  background: var(--color-addressbar-bg);
   -webkit-app-region: no-drag;
 }
 
-.nav-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.nav-controls__btn {
-  width: 30px;
-  height: 30px;
-  font-size: 16px;
-}
-
-.address-bar__form {
+.addressbar__form {
   flex: 1;
   display: flex;
 }
 
-.address-bar__input-wrapper {
+/* ── Input Wrapper (pill shape) ──────────────────────────── */
+
+.addressbar__input-wrap {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-address-bar);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  padding: 0 6px 0 12px;
+  gap: var(--space-3);
   height: 34px;
-  transition: all var(--transition);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-3) 0 var(--space-5);
+  transition: all var(--transition-base);
 }
 
-.address-bar__input-wrapper.focused {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-light);
-  background: var(--bg-input-focus);
+.addressbar__input-wrap--focused {
+  background: var(--color-input-bg-focused);
+  border-color: var(--color-input-border-focused);
+  box-shadow: var(--shadow-accent);
 }
 
-.address-bar__lock {
-  font-size: 12px;
+/* ── Security Lock ───────────────────────────────────────── */
+
+.addressbar__lock {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
 }
 
-.address-bar__lock.secure { opacity: 0.6; }
-.address-bar__lock.insecure { color: var(--warning); }
+.addressbar__lock--secure {
+  color: var(--color-success);
+  opacity: 0.7;
+}
 
-.address-bar__input {
+.addressbar__lock--insecure {
+  color: var(--color-warning);
+}
+
+/* ── URL Input ───────────────────────────────────────────── */
+
+.addressbar__input {
   flex: 1;
-  border: none;
-  background: none;
-  color: var(--text-primary);
-  font-size: var(--font-size-md);
-  outline: none;
-  padding: 0;
+  height: 100%;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  caret-color: var(--color-accent);
   min-width: 0;
 }
 
-.address-bar__input::placeholder {
-  color: var(--text-muted);
+.addressbar__input::placeholder {
+  color: var(--color-text-muted);
 }
 
-.address-bar__input:focus {
-  box-shadow: none;
+.addressbar__input::selection {
+  background: var(--color-accent-subtle);
 }

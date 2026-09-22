@@ -1,3 +1,9 @@
+/**
+ * @fileoverview EngineSelector — inline horizontal engine picker.
+ * Shows all engines as compact pills directly inside the address bar.
+ * No dropdown needed — stays within the chrome WebContentsView.
+ */
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import './EngineSelector.css';
 
@@ -10,13 +16,6 @@ const ENGINES = [
   { name: 'yandex', displayName: 'Yandex', icon: 'Я', color: '#fc3f1d' },
 ];
 
-/**
- * Engine selector that shows an inline horizontal picker
- * directly inside the address bar.
- *
- * This avoids ALL popup/dropdown z-index issues caused by the tab
- * WebContentsView overlaying the chrome below 108px.
- */
 export default function EngineSelector({ currentEngine, onSelect }) {
   const [expanded, setExpanded] = useState(false);
   const containerRef = useRef(null);
@@ -57,35 +56,36 @@ export default function EngineSelector({ currentEngine, onSelect }) {
   return (
     <div className="engine-selector" ref={containerRef}>
       {expanded ? (
-        /* ── Inline horizontal engine picker ─────────────────── */
-        <div className="engine-selector__inline-picker">
+        <div className="engine-selector__picker">
           {ENGINES.map((engine) => (
             <button
               key={engine.name}
               type="button"
-              className={`engine-selector__pill ${engine.name === currentEngine ? 'active' : ''}`}
+              className={`engine-selector__pill ${engine.name === currentEngine ? 'engine-selector__pill--active' : ''}`}
               onClick={() => handleSelect(engine.name)}
               title={engine.displayName}
             >
               <span
-                className="engine-selector__pill-icon"
+                className="engine-selector__badge"
                 style={{ background: engine.color }}
               >
                 {engine.icon}
               </span>
-              <span className="engine-selector__pill-name">{engine.displayName}</span>
+              <span className="engine-selector__name">{engine.displayName}</span>
             </button>
           ))}
         </div>
       ) : (
-        /* ── Collapsed: just show active engine icon ─────────── */
         <button
           type="button"
-          className="engine-selector__btn"
+          className="engine-selector__toggle"
           onClick={handleToggle}
           title={`Search with ${active.displayName} — click to change`}
         >
-          <span className="engine-selector__icon" style={{ background: active.color }}>
+          <span
+            className="engine-selector__badge"
+            style={{ background: active.color }}
+          >
             {active.icon}
           </span>
         </button>

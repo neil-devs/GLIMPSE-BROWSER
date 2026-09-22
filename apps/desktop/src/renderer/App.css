@@ -1,0 +1,29 @@
+/* ═══════════════════════════════════════════════════════════════
+   App Shell Layout
+   ═══════════════════════════════════════════════════════════════ */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--color-bg-base);
+}
+
+.app__chrome {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-tabbar-bg);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: var(--z-base);
+}
+
+.app__content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: var(--color-bg-base);
+}

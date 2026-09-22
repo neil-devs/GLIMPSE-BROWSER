@@ -1,6 +1,12 @@
+/**
+ * @fileoverview AddressBar — URL input with nav controls and engine selector.
+ * Chrome 2025-style pill-shaped input with security indicator.
+ */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import NavControls from './NavControls';
 import EngineSelector from './EngineSelector';
+import Icon from '../Icon';
 import useTabs from '../../hooks/useTabs';
 import './AddressBar.css';
 
@@ -34,9 +40,7 @@ export default function AddressBar() {
     window.glimpse.settings.get('defaultEngine', 'google')
       .then((result) => {
         const val = result?.data || result;
-        if (typeof val === 'string' && val.length > 0) {
-          setDefaultEngine(val);
-        }
+        if (typeof val === 'string' && val.length > 0) setDefaultEngine(val);
       })
       .catch(() => {});
   }, []);
@@ -61,10 +65,7 @@ export default function AddressBar() {
       url = searchBase + encodeURIComponent(trimmed);
     }
 
-    if (activeTabId) {
-      navigate(activeTabId, url);
-    }
-
+    if (activeTabId) navigate(activeTabId, url);
     inputRef.current?.blur();
   }, [inputValue, activeTabId, navigate, defaultEngine]);
 
@@ -78,29 +79,29 @@ export default function AddressBar() {
   };
 
   const handleEngineChange = useCallback((engine) => {
-    console.log('[AddressBar] Engine changed to:', engine);
     setDefaultEngine(engine);
     window.glimpse.settings.set('defaultEngine', engine).catch(() => {});
   }, []);
 
   const isSecure = activeTab?.url?.startsWith('https://');
+  const showLock = !isFocused && activeTab?.url && activeTab.url !== 'about:blank';
 
   return (
-    <div className="address-bar">
+    <div className="addressbar">
       <NavControls />
 
-      <form className="address-bar__form" onSubmit={handleSubmit}>
-        <div className={`address-bar__input-wrapper ${isFocused ? 'focused' : ''}`}>
-          {!isFocused && activeTab?.url && activeTab.url !== 'about:blank' && (
-            <span className={`address-bar__lock ${isSecure ? 'secure' : 'insecure'}`}>
-              {isSecure ? '🔒' : '⚠'}
+      <form className="addressbar__form" onSubmit={handleSubmit}>
+        <div className={`addressbar__input-wrap ${isFocused ? 'addressbar__input-wrap--focused' : ''}`}>
+          {showLock && (
+            <span className={`addressbar__lock ${isSecure ? 'addressbar__lock--secure' : 'addressbar__lock--insecure'}`}>
+              <Icon name={isSecure ? 'lock' : 'alert-triangle'} size={14} />
             </span>
           )}
 
           <input
             ref={inputRef}
             type="text"
-            className="address-bar__input"
+            className="addressbar__input"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onFocus={handleFocus}

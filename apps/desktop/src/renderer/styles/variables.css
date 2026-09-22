@@ -1,98 +1,171 @@
-/* ── Glimpse Browser Design Tokens ──────────────────────────────── */
-/* Default theme: Dark */
+/* ═══════════════════════════════════════════════════════════════
+   GLIMPSE BROWSER — Design System Variables
+   A modern, Chrome 2025-inspired design system.
+   ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Colors ─────────────────────────────────────────────────── */
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --bg-tab-active: #2a2a4a;
-  --bg-tab-inactive: #1a1a2e;
-  --bg-tab-hover: #222240;
-  --bg-address-bar: #2a2a4a;
-  --bg-sidebar: #16213e;
-  --bg-input: rgba(255, 255, 255, 0.06);
-  --bg-input-focus: rgba(255, 255, 255, 0.1);
-  --bg-dropdown: #1e1e3a;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-active: rgba(255, 255, 255, 0.1);
-  --bg-toast: #2a2a4a;
-
-  --text-primary: #e8e8f0;
-  --text-secondary: #a0a0b8;
-  --text-muted: #606080;
-  --text-inverse: #1a1a2e;
-
-  --accent: #6c63ff;
-  --accent-hover: #7c73ff;
-  --accent-active: #5c53ef;
-  --accent-light: rgba(108, 99, 255, 0.15);
-  --accent-glow: rgba(108, 99, 255, 0.3);
-
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.15);
-  --shadow: rgba(0, 0, 0, 0.4);
-  --shadow-lg: rgba(0, 0, 0, 0.6);
-
-  --success: #4ade80;
-  --success-bg: rgba(74, 222, 128, 0.12);
-  --error: #f87171;
-  --error-bg: rgba(248, 113, 113, 0.12);
-  --warning: #fbbf24;
-  --warning-bg: rgba(251, 191, 36, 0.12);
-  --info: #60a5fa;
-  --info-bg: rgba(96, 165, 250, 0.12);
-
-  /* ── Layout ─────────────────────────────────────────────────── */
-  --titlebar-height: 28px;
-  --tab-height: 36px;
-  --addressbar-height: 44px;
-  --chrome-height: 108px; /* titlebar + tabs + addressbar */
-  --sidebar-width: 320px;
-
-  /* ── Tab sizing ─────────────────────────────────────────────── */
-  --tab-max-width: 240px;
-  --tab-min-width: 40px;
-  --tab-pinned-width: 36px;
-
-  /* ── Spacing ────────────────────────────────────────────────── */
-  --space-xxs: 2px;
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 12px;
-  --space-lg: 16px;
-  --space-xl: 24px;
-  --space-xxl: 32px;
-
-  /* ── Border Radius ──────────────────────────────────────────── */
-  --radius: 8px;
-  --radius-sm: 4px;
-  --radius-lg: 12px;
-  --radius-full: 9999px;
-
-  /* ── Typography ─────────────────────────────────────────────── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  /* ── Fonts ────────────────────────────────────────────── */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
-  --font-size-md: 13px;
-  --font-size-lg: 14px;
-  --font-size-xl: 16px;
-  --font-size-2xl: 20px;
-  --font-size-3xl: 24px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
 
-  /* ── Transitions ────────────────────────────────────────────── */
-  --transition: 150ms ease;
-  --transition-slow: 300ms ease;
-  --transition-fast: 100ms ease;
+  /* ── Spacing Scale ────────────────────────────────────── */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
 
-  /* ── Z-Index Scale ──────────────────────────────────────────── */
-  --z-tab: 10;
-  --z-addressbar: 20;
-  --z-sidebar: 100;
-  --z-overlay: 200;
-  --z-dropdown: 300;
-  --z-context-menu: 400;
-  --z-toast: 500;
-  --z-modal: 600;
+  /* ── Radius ───────────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 100px;
+  --radius-round: 50%;
+
+  /* ── Transitions ──────────────────────────────────────── */
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Layout ───────────────────────────────────────────── */
+  --titlebar-height: 0px;
+  --tab-bar-height: 40px;
+  --address-bar-height: 52px;
+  --toolbar-height: 36px;
+  --chrome-height: 128px;
+  --sidebar-width: 340px;
+
+  /* ── Z-index Scale ────────────────────────────────────── */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-overlay: 500;
+  --z-sidebar: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+  --z-tooltip: 4000;
+
+  /* ═══════════════════════════════════════════════════════
+     DARK THEME (default)
+     ═══════════════════════════════════════════════════════ */
+
+  /* Backgrounds — layered from darkest to lightest */
+  --color-bg-base: #0f1117;
+  --color-bg-surface: #1a1d27;
+  --color-bg-elevated: #222536;
+  --color-bg-overlay: #2a2e42;
+  --color-bg-hover: rgba(255, 255, 255, 0.06);
+  --color-bg-active: rgba(255, 255, 255, 0.1);
+
+  /* Tab bar */
+  --color-tabbar-bg: #13151f;
+  --color-tab-active-bg: #1e2130;
+  --color-tab-inactive-bg: transparent;
+  --color-tab-hover-bg: rgba(255, 255, 255, 0.05);
+
+  /* Address bar */
+  --color-addressbar-bg: #13151f;
+  --color-input-bg: #1e2130;
+  --color-input-bg-focused: #252840;
+  --color-input-border: rgba(255, 255, 255, 0.08);
+  --color-input-border-focused: rgba(108, 99, 255, 0.6);
+
+  /* Text */
+  --color-text-primary: #e8eaf0;
+  --color-text-secondary: #9a9db8;
+  --color-text-muted: #5a5d7a;
+  --color-text-disabled: #3a3d5a;
+  --color-text-on-accent: #ffffff;
+
+  /* Accent — Glimpse purple */
+  --color-accent: #6c63ff;
+  --color-accent-hover: #7d75ff;
+  --color-accent-active: #5a52e0;
+  --color-accent-subtle: rgba(108, 99, 255, 0.12);
+  --color-accent-glow: rgba(108, 99, 255, 0.25);
+
+  /* Semantic */
+  --color-success: #34d399;
+  --color-success-subtle: rgba(52, 211, 153, 0.12);
+  --color-warning: #fbbf24;
+  --color-warning-subtle: rgba(251, 191, 36, 0.12);
+  --color-error: #f87171;
+  --color-error-subtle: rgba(248, 113, 113, 0.12);
+  --color-info: #60a5fa;
+  --color-info-subtle: rgba(96, 165, 250, 0.12);
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+  --color-border-accent: rgba(108, 99, 255, 0.4);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-accent: 0 0 0 3px var(--color-accent-glow);
+
+  /* Scrollbar */
+  --scrollbar-width: 6px;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+  --scrollbar-track: transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIGHT THEME
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="light"] {
+  --color-bg-base: #f0f2f8;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #f8f9fc;
+  --color-bg-overlay: #eef0f7;
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
+  --color-bg-active: rgba(0, 0, 0, 0.08);
+
+  --color-tabbar-bg: #e4e7f2;
+  --color-tab-active-bg: #ffffff;
+  --color-tab-inactive-bg: transparent;
+  --color-tab-hover-bg: rgba(0, 0, 0, 0.04);
+
+  --color-addressbar-bg: #e4e7f2;
+  --color-input-bg: #ffffff;
+  --color-input-bg-focused: #ffffff;
+  --color-input-border: rgba(0, 0, 0, 0.1);
+  --color-input-border-focused: rgba(108, 99, 255, 0.5);
+
+  --color-text-primary: #1a1d2e;
+  --color-text-secondary: #4a4d6a;
+  --color-text-muted: #8a8da8;
+  --color-text-disabled: #c0c2d8;
+
+  --color-accent-subtle: rgba(108, 99, 255, 0.08);
+  --color-accent-glow: rgba(108, 99, 255, 0.15);
+
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.14);
+  --color-border-accent: rgba(108, 99, 255, 0.3);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.15);
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
 }

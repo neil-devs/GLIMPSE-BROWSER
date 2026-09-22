@@ -1,28 +1,34 @@
-import React from 'react';
+/**
+ * @fileoverview Individual Tab component.
+ * Chrome 2025-style with rounded top corners, favicon, close button.
+ */
+
+import React, { useCallback } from 'react';
+import Icon from '../Icon';
+import useTabs from '../../hooks/useTabs';
 import './Tab.css';
 
-export default function Tab({ tab, isActive, onClose, onClick, onContextMenu, onMouseDown }) {
-  const handleClose = (e) => {
-    e.stopPropagation();
-    onClose(tab.id);
-  };
+export default function Tab({ tab, isActive, onActivate }) {
+  const { closeTab } = useTabs();
 
-  const handleMiddleClick = (e) => {
+  const handleClose = useCallback((e) => {
+    e.stopPropagation();
+    closeTab(tab.id);
+  }, [closeTab, tab.id]);
+
+  const handleMouseDown = useCallback((e) => {
+    /* Middle-click to close */
     if (e.button === 1) {
       e.preventDefault();
-      onClose(tab.id);
+      closeTab(tab.id);
     }
-  };
+  }, [closeTab, tab.id]);
 
   return (
     <div
-      className={`tab ${isActive ? 'tab--active' : ''} ${tab.isPinned ? 'tab--pinned' : ''}`}
-      onClick={() => onClick(tab.id)}
-      onMouseDown={(e) => {
-        handleMiddleClick(e);
-        onMouseDown?.(e, tab.id);
-      }}
-      onContextMenu={(e) => onContextMenu(e, tab)}
+      className={`tab ${isActive ? 'tab--active' : ''} ${tab.isLoading ? 'tab--loading' : ''}`}
+      onClick={onActivate}
+      onMouseDown={handleMouseDown}
       title={tab.title || tab.url}
       role="tab"
       aria-selected={isActive}
@@ -31,27 +37,44 @@ export default function Tab({ tab, isActive, onClose, onClick, onContextMenu, on
         {tab.isLoading ? (
           <div className="tab__spinner" />
         ) : tab.favicon ? (
-          <img src={tab.favicon} alt="" width={16} height={16} />
+          <img
+            src={tab.favicon}
+            alt=""
+            width={16}
+            height={16}
+            className="tab__favicon-img"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
         ) : (
-          <span className="tab__globe">🌐</span>
+          <Icon name="globe" size={14} />
         )}
       </div>
 
-      {!tab.isPinned && (
-        <span className="tab__title">{tab.title || 'New Tab'}</span>
-      )}
+      <span className="tab__title">
+        {tab.title || 'New Tab'}
+      </span>
 
       {tab.isAudioPlaying && (
-        <span className="tab__audio" title={tab.isMuted ? 'Unmute' : 'Mute'}>
-          {tab.isMuted ? '🔇' : '🔊'}
-        </span>
-      )}
-
-      {!tab.isPinned && (
-        <button className="tab__close" onClick={handleClose} aria-label="Close tab">
-          ×
+        <button
+          className="tab__audio-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.glimpse.tabs.mute(tab.id, !tab.isMuted);
+          }}
+          title={tab.isMuted ? 'Unmute tab' : 'Mute tab'}
+        >
+          <Icon name={tab.isMuted ? 'speaker-off' : 'speaker'} size={12} />
         </button>
       )}
+
+      <button
+        className="tab__close"
+        onClick={handleClose}
+        title="Close tab"
+        aria-label="Close tab"
+      >
+        <Icon name="x" size={12} />
+      </button>
     </div>
   );
 }
