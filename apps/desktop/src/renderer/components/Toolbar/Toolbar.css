@@ -1,20 +1,111 @@
+/* ═══════════════════════════════════════════════════════════════
+   Toolbar — actions bar below address bar
+   ═══════════════════════════════════════════════════════════════ */
+
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-right: 4px;
+  height: var(--toolbar-height);
+  padding: 0 var(--space-5);
+  background: var(--color-tabbar-bg);
+  border-top: 1px solid var(--color-border);
+  -webkit-app-region: no-drag;
 }
 
-.toolbar__downloads {
+.toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.toolbar__spacer {
+  flex: 1;
+}
+
+/* ── Toolbar Button ──────────────────────────────────────── */
+
+.toolbar__btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  transition: background var(--transition-fast),
+              color var(--transition-fast);
+}
+
+.toolbar__btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.toolbar__btn:active {
+  background: var(--color-bg-active);
+}
+
+/* ── Prefetch Indicator ──────────────────────────────────── */
+
+.toolbar__prefetch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  animation: fadeIn var(--transition-base);
+}
+
+.toolbar__prefetch-count {
+  white-space: nowrap;
+}
+
+/* ── Dropdown Menu ───────────────────────────────────────── */
+
+.toolbar__menu-wrap {
   position: relative;
 }
 
-.toolbar__badge {
+.toolbar__menu {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 14px;
-  height: 14px;
-  font-size: 9px;
-  padding: 0 3px;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-3);
+  z-index: var(--z-dropdown);
+}
+
+.toolbar__menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.toolbar__menu-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.toolbar__menu-shortcut {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.toolbar__menu-sep {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-2) 0;
 }
