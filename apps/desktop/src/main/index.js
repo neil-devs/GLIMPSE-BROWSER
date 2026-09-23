@@ -7,7 +7,11 @@
 'use strict';
 
 const path = require('node:path');
-require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
+if (!require('electron').app.isPackaged) {
+  try {
+    require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
+  } catch (e) {}
+}
 
 const { app } = require('electron');
 const { logger } = require('./utils/logger');
