@@ -26,8 +26,8 @@ const tabViews = new Map();
 /** Reference to the BaseWindow */
 let mainWindow = null;
 
-/** Chrome height in pixels (titlebar + tabs + addressbar) */
-const CHROME_HEIGHT = 108;
+/** Chrome height in pixels (tabs + addressbar + toolbar) */
+const CHROME_HEIGHT = 128;
 
 /** Path to the tab preload script */
 const TAB_PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload', 'tab-preload.js');

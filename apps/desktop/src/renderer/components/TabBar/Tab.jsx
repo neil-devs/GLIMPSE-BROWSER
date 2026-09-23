@@ -1,10 +1,8 @@
 /**
  * @fileoverview Individual Tab component.
- * Chrome 2025-style with rounded top corners, favicon, close button.
  */
 
 import React, { useCallback } from 'react';
-import Icon from '../Icon';
 import useTabs from '../../hooks/useTabs';
 import './Tab.css';
 
@@ -17,7 +15,6 @@ export default function Tab({ tab, isActive, onActivate }) {
   }, [closeTab, tab.id]);
 
   const handleMouseDown = useCallback((e) => {
-    /* Middle-click to close */
     if (e.button === 1) {
       e.preventDefault();
       closeTab(tab.id);
@@ -26,12 +23,10 @@ export default function Tab({ tab, isActive, onActivate }) {
 
   return (
     <div
-      className={`tab ${isActive ? 'tab--active' : ''} ${tab.isLoading ? 'tab--loading' : ''}`}
+      className={`tab ${isActive ? 'active' : ''}`}
       onClick={onActivate}
       onMouseDown={handleMouseDown}
       title={tab.title || tab.url}
-      role="tab"
-      aria-selected={isActive}
     >
       <div className="tab__favicon">
         {tab.isLoading ? (
@@ -46,7 +41,9 @@ export default function Tab({ tab, isActive, onActivate }) {
             onError={(e) => { e.target.style.display = 'none'; }}
           />
         ) : (
-          <Icon name="globe" size={14} />
+          <div className="tab__favicon-placeholder">
+            {(tab.title || 'N').charAt(0).toUpperCase()}
+          </div>
         )}
       </div>
 
@@ -54,26 +51,12 @@ export default function Tab({ tab, isActive, onActivate }) {
         {tab.title || 'New Tab'}
       </span>
 
-      {tab.isAudioPlaying && (
-        <button
-          className="tab__audio-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            window.glimpse.tabs.mute(tab.id, !tab.isMuted);
-          }}
-          title={tab.isMuted ? 'Unmute tab' : 'Mute tab'}
-        >
-          <Icon name={tab.isMuted ? 'speaker-off' : 'speaker'} size={12} />
-        </button>
-      )}
-
       <button
         className="tab__close"
         onClick={handleClose}
         title="Close tab"
-        aria-label="Close tab"
       >
-        <Icon name="x" size={12} />
+        ×
       </button>
     </div>
   );

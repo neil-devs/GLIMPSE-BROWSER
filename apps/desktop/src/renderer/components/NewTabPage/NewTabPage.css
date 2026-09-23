@@ -1,162 +1,248 @@
-.new-tab-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ═══════════════════════════════════════════════════════════════
+   NewTabPage — modern landing page
+   ═══════════════════════════════════════════════════════════════ */
+
+.ntp {
+  width: 100%;
   height: 100%;
-  background: var(--bg-primary);
-  padding: 40px;
-}
-
-.new-tab-page__content {
-  text-align: center;
-  width: 100%;
-  max-width: 600px;
-}
-
-.new-tab-page__logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.new-tab-page__logo-icon {
-  font-size: 36px;
-}
-
-.new-tab-page__title {
-  font-size: 36px;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), #a855f7);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.new-tab-page__greeting {
-  color: var(--text-secondary);
-  font-size: var(--font-size-lg);
-  margin-bottom: 24px;
-}
-
-.new-tab-page__search {
-  margin-bottom: 32px;
-}
-
-.new-tab-page__search-input {
-  width: 100%;
-  height: 48px;
-  border-radius: var(--radius-full);
-  padding: 0 24px;
-  font-size: var(--font-size-lg);
-  background: var(--bg-address-bar);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  transition: all var(--transition);
-}
-
-.new-tab-page__search-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-light), 0 4px 24px var(--shadow);
-}
-
-/* Speed Dial */
-.speed-dial {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
-.speed-dial__item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 16px 8px;
-  border-radius: var(--radius);
-  transition: background var(--transition);
+  background: var(--color-bg-base);
+  position: relative;
+  overflow-y: auto;
 }
 
-.speed-dial__item:hover {
-  background: var(--bg-hover);
+/* Subtle radial glow */
+.ntp__glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 500px;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    rgba(108, 99, 255, 0.08) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
 }
 
-.speed-dial__icon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-address-bar);
+.ntp__content {
+  position: relative;
+  z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.speed-dial__icon img {
-  border-radius: 4px;
-}
-
-.speed-dial__letter {
   width: 100%;
-  height: 100%;
+  max-width: 680px;
+  padding: 0 var(--space-8);
+  margin-top: 12vh;
+}
+
+/* ── Logo ────────────────────────────────────────────────── */
+
+.ntp__logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-9);
+}
+
+.ntp__logo-icon {
+  width: 56px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  font-weight: 700;
-  color: white;
+  color: var(--color-accent);
+  margin-bottom: var(--space-3);
+  filter: drop-shadow(0 0 12px rgba(108, 99, 255, 0.4));
 }
 
-.speed-dial__name {
+.ntp__wordmark {
+  font-size: 28px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.ntp__tagline {
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+
+/* ── Search Bar ──────────────────────────────────────────── */
+
+.ntp__search {
+  width: 100%;
+  margin-bottom: var(--space-9);
+}
+
+.ntp__search-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 48px;
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-7);
+  transition: all var(--transition-base);
+}
+
+.ntp__search-wrap:focus-within {
+  border-color: var(--color-input-border-focused);
+  box-shadow: var(--shadow-accent);
+  background: var(--color-input-bg-focused);
+}
+
+.ntp__search-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.ntp__search-input {
+  flex: 1;
+  height: 100%;
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  caret-color: var(--color-accent);
+}
+
+.ntp__search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Speed Dial ──────────────────────────────────────────── */
+
+.speed-dial {
+  width: 100%;
+  margin-bottom: var(--space-9);
+}
+
+.speed-dial__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-6);
+}
+
+.speed-dial__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  height: 90px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  position: relative;
+  transition: all var(--transition-base);
+}
+
+.speed-dial__card:hover {
+  border-color: var(--color-accent-subtle);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.speed-dial__card-favicon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+}
+
+.speed-dial__card-name {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  max-width: 100%;
+  color: var(--color-text-secondary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
-/* Recent History */
+.speed-dial__card-remove {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-round);
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.speed-dial__card:hover .speed-dial__card-remove {
+  opacity: 1;
+}
+
+.speed-dial__card-remove:hover {
+  background: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+/* ── Recent History ──────────────────────────────────────── */
+
 .recent-history {
-  text-align: left;
+  width: 100%;
 }
 
-.recent-history__title {
+.recent-history__label {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  letter-spacing: 0.08em;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-4);
 }
 
 .recent-history__list {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: var(--space-5);
+  overflow-x: auto;
+  padding-bottom: var(--space-4);
 }
 
 .recent-history__item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  text-align: left;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  max-width: 160px;
 }
 
 .recent-history__item:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
 }
 
-.recent-history__favicon {
+.recent-history__item-favicon {
   width: 14px;
   height: 14px;
+  border-radius: 2px;
   flex-shrink: 0;
-  font-size: 12px;
 }
 
-.recent-history__favicon img {
-  border-radius: 2px;
+.recent-history__item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -1,111 +1,48 @@
-/* ═══════════════════════════════════════════════════════════════
-   Toolbar — actions bar below address bar
-   ═══════════════════════════════════════════════════════════════ */
+/* Toolbar — action bar below address bar */
 
 .toolbar {
   display: flex;
   align-items: center;
-  height: var(--toolbar-height);
-  padding: 0 var(--space-5);
-  background: var(--color-tabbar-bg);
-  border-top: 1px solid var(--color-border);
-  -webkit-app-region: no-drag;
+  height: 34px;
+  background: #1a1d27;
+  padding: 0 12px;
+  gap: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
-
-.toolbar__group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.toolbar__spacer {
-  flex: 1;
-}
-
-/* ── Toolbar Button ──────────────────────────────────────── */
 
 .toolbar__btn {
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  transition: background var(--transition-fast),
-              color var(--transition-fast);
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.6);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+  font-family: inherit;
+  padding: 0;
 }
 
 .toolbar__btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.9);
 }
 
-.toolbar__btn:active {
-  background: var(--color-bg-active);
-}
+.toolbar__spacer { flex: 1; }
 
-/* ── Prefetch Indicator ──────────────────────────────────── */
-
-.toolbar__prefetch {
+.toolbar__prefetch-badge {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-4);
-  border-radius: var(--radius-pill);
-  background: var(--color-success-subtle);
-  color: var(--color-success);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  animation: fadeIn var(--transition-base);
-}
-
-.toolbar__prefetch-count {
-  white-space: nowrap;
-}
-
-/* ── Dropdown Menu ───────────────────────────────────────── */
-
-.toolbar__menu-wrap {
-  position: relative;
-}
-
-.toolbar__menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 220px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
-  padding: var(--space-3);
-  z-index: var(--z-dropdown);
-}
-
-.toolbar__menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  width: 100%;
-  height: 32px;
-  padding: 0 var(--space-5);
-  border-radius: var(--radius-md);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-base);
-  text-align: left;
-  transition: background var(--transition-fast);
-}
-
-.toolbar__menu-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.toolbar__menu-shortcut {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.toolbar__menu-sep {
-  height: 1px;
-  background: var(--color-border);
-  margin: var(--space-2) 0;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.2);
+  color: #34d399;
+  font-size: 11px;
+  font-weight: 500;
 }

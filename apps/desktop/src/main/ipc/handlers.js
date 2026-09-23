@@ -7,7 +7,7 @@
 
 'use strict';
 
-const { ipcMain, app, shell } = require('electron');
+const { ipcMain, app, shell, Menu } = require('electron');
 const { APP } = require('@glimpse/shared/ipc-types');
 const { registerTabsHandlers } = require('./tabs-handlers');
 const { registerStorageHandlers } = require('./storage-handlers');
@@ -80,6 +80,145 @@ function registerAllHandlers(deps = {}) {
     if (win) {
       win.setFullScreen(!win.isFullScreen());
     }
+  });
+
+  /* ── Native Popup Menu (Chrome ⋮ style) ───────────────────── */
+
+  ipcMain.handle('app:showMenu', (event) => {
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender);
+    const tabManager = deps.tabManager;
+
+    const template = [
+      {
+        label: 'New Tab',
+        accelerator: 'CmdOrCtrl+T',
+        click: () => {
+          if (tabManager) tabManager.createTab('about:blank');
+        },
+      },
+      {
+        label: 'New Window',
+        accelerator: 'CmdOrCtrl+N',
+        enabled: false,
+      },
+      { type: 'separator' },
+      {
+        label: 'History',
+        accelerator: 'CmdOrCtrl+H',
+        click: () => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('menu:action', 'history');
+          }
+        },
+      },
+      {
+        label: 'Downloads',
+        accelerator: 'CmdOrCtrl+J',
+        click: () => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('menu:action', 'downloads');
+          }
+        },
+      },
+      {
+        label: 'Bookmarks',
+        accelerator: 'CmdOrCtrl+D',
+        click: () => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('menu:action', 'bookmarks');
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Zoom',
+        submenu: [
+          {
+            label: 'Zoom In',
+            accelerator: 'CmdOrCtrl+Plus',
+            click: () => {
+              if (event.sender && !event.sender.isDestroyed()) {
+                const current = event.sender.getZoomLevel();
+                event.sender.setZoomLevel(current + 0.5);
+              }
+            },
+          },
+          {
+            label: 'Zoom Out',
+            accelerator: 'CmdOrCtrl+-',
+            click: () => {
+              if (event.sender && !event.sender.isDestroyed()) {
+                const current = event.sender.getZoomLevel();
+                event.sender.setZoomLevel(current - 0.5);
+              }
+            },
+          },
+          {
+            label: 'Reset Zoom',
+            accelerator: 'CmdOrCtrl+0',
+            click: () => {
+              if (event.sender && !event.sender.isDestroyed()) {
+                event.sender.setZoomLevel(0);
+              }
+            },
+          },
+        ],
+      },
+      {
+        label: 'Full Screen',
+        accelerator: 'F11',
+        click: () => {
+          if (win) win.setFullScreen(!win.isFullScreen());
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Print...',
+        accelerator: 'CmdOrCtrl+P',
+        enabled: false,
+      },
+      {
+        label: 'Find in Page',
+        accelerator: 'CmdOrCtrl+F',
+        enabled: false,
+      },
+      { type: 'separator' },
+      {
+        label: 'Clear Browsing Data...',
+        accelerator: 'CmdOrCtrl+Shift+Delete',
+        click: () => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('menu:action', 'clearData');
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Settings',
+        click: () => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('menu:action', 'settings');
+          }
+        },
+      },
+      {
+        label: 'About Glimpse',
+        click: () => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('menu:action', 'about');
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Exit',
+        accelerator: 'Alt+F4',
+        click: () => app.quit(),
+      },
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: win });
   });
 
   /* ── Sub-handler Registrars ───────────────────────────────── */

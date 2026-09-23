@@ -64,6 +64,7 @@ const APP = {
   OPEN_EXTERNAL: 'app:openExternal', MINIMIZE: 'app:minimize',
   MAXIMIZE: 'app:maximize', CLOSE: 'app:close',
   IS_MAXIMIZED: 'app:isMaximized', TOGGLE_FULLSCREEN: 'app:toggleFullscreen',
+  SHOW_MENU: 'app:showMenu',
 };
 
 const AUTH = {
@@ -164,6 +165,7 @@ const appApi = {
   close: () => ipcRenderer.invoke(APP.CLOSE),
   isMaximized: () => ipcRenderer.invoke(APP.IS_MAXIMIZED),
   toggleFullscreen: () => ipcRenderer.invoke(APP.TOGGLE_FULLSCREEN),
+  showMenu: () => ipcRenderer.invoke(APP.SHOW_MENU),
 };
 
 /* ── Event System ───────────────────────────────────────────────── */

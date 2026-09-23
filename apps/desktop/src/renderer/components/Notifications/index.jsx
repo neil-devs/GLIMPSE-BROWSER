@@ -1,12 +1,11 @@
 /**
- * @fileoverview Toast notification container.
- * Renders all active notifications stacked in the top-right corner.
+ * @fileoverview Notifications container — renders toasts in bottom-right.
  */
 
 import React from 'react';
 import Toast from './Toast';
 import useUiStore from '../../store/ui-store';
-import './Toast.css';
+import './Notifications.css';
 
 export default function Notifications() {
   const notifications = useUiStore((s) => s.notifications);
@@ -15,9 +14,13 @@ export default function Notifications() {
   if (notifications.length === 0) return null;
 
   return (
-    <div className="toast-container">
+    <div className="notifications">
       {notifications.map((n) => (
-        <Toast key={n.id} notification={n} onDismiss={removeNotification} />
+        <Toast
+          key={n.id}
+          notification={n}
+          onDismiss={() => removeNotification(n.id)}
+        />
       ))}
     </div>
   );

@@ -14,8 +14,8 @@ const { BaseWindow, WebContentsView, app } = require('electron');
 const path = require('node:path');
 const { logger } = require('../utils/logger');
 
-/** Chrome height: titlebar (28) + tabs (36) + addressbar (44) = 108px */
-const CHROME_HEIGHT = 108;
+/** Chrome height: tabs (40) + addressbar (52) + toolbar (36) = 128px */
+const CHROME_HEIGHT = 128;
 
 /**
  * Create the main browser window with a chrome WebContentsView.

@@ -1,95 +1,110 @@
-/* ═══════════════════════════════════════════════════════════════
-   Sidebar — slide-in panel from right
-   ═══════════════════════════════════════════════════════════════ */
+/* Sidebar — slide-in panel from right */
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 999;
+  animation: sidebar-fade-in 200ms ease;
+}
+
+@keyframes sidebar-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 .sidebar {
   position: fixed;
-  right: 0;
   top: 0;
-  width: var(--sidebar-width);
+  right: 0;
+  width: 340px;
   height: 100vh;
-  background: var(--color-bg-surface);
-  border-left: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xl);
-  transform: translateX(100%);
-  transition: transform var(--transition-slow);
-  z-index: var(--z-sidebar);
+  background: #1e2130;
+  border-left: 1px solid rgba(255,255,255,0.08);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+  z-index: 1000;
   display: flex;
   flex-direction: column;
+  animation: sidebar-slide-in 200ms cubic-bezier(0.4,0,0.2,1);
 }
 
-.sidebar--open {
-  transform: translateX(0);
+@keyframes sidebar-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
-
-/* ── Header ──────────────────────────────────────────────── */
 
 .sidebar__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  padding: 0 var(--space-6);
-  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 
 .sidebar__title {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  margin: 0;
 }
 
 .sidebar__close {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-round);
-  color: var(--color-text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.6);
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 150ms;
+  font-family: inherit;
+  padding: 0;
 }
 
-.sidebar__close:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-/* ── Nav Tabs ────────────────────────────────────────────── */
+.sidebar__close:hover { background: rgba(255,255,255,0.1); }
 
 .sidebar__nav {
   display: flex;
-  border-bottom: 1px solid var(--color-border);
-  padding: 0 var(--space-4);
-  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 
 .sidebar__nav-tab {
   flex: 1;
+  height: 40px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  height: 36px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  border-bottom: 2px solid transparent;
-  transition: color var(--transition-fast),
-              border-color var(--transition-fast);
+  gap: 5px;
+  transition: all 150ms;
+  font-family: inherit;
+  padding: 0;
 }
 
-.sidebar__nav-tab:hover {
-  color: var(--color-text-primary);
+.sidebar__nav-tab.active {
+  color: #6c63ff;
+  border-bottom-color: #6c63ff;
 }
 
-.sidebar__nav-tab--active {
-  color: var(--color-accent);
-  border-bottom-color: var(--color-accent);
+.sidebar__nav-tab:hover:not(.active) {
+  color: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.04);
 }
-
-/* ── Content ─────────────────────────────────────────────── */
 
 .sidebar__content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: 12px;
 }
 
 .sidebar__placeholder {
@@ -97,9 +112,6 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-5);
-  padding-top: var(--space-10);
-  color: var(--color-text-muted);
+  padding-top: 60px;
   text-align: center;
-  font-size: var(--font-size-sm);
 }

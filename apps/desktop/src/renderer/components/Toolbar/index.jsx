@@ -1,120 +1,71 @@
 /**
- * @fileoverview Toolbar — bookmark star, downloads, prefetch status, menu.
- * Sits below the address bar.
+ * @fileoverview Toolbar — action buttons below address bar.
+ * The ⋮ button triggers a native Electron popup menu via IPC.
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import Icon from '../Icon';
+import React, { useState, useEffect, useCallback } from 'react';
 import useUiStore from '../../store/ui-store';
 import './Toolbar.css';
 
 export default function Toolbar() {
   const [prefetchCount, setPrefetchCount] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setSidebarTab = useUiStore((s) => s.setSidebarTab);
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
 
   /* Listen for prefetch updates */
   useEffect(() => {
     const handler = (data) => {
       if (data?.cachedCount !== undefined) setPrefetchCount(data.cachedCount);
     };
-    window.glimpse.on('prefetch:statusUpdated', handler);
-    return () => window.glimpse.off('prefetch:statusUpdated', handler);
+    if (window.glimpse?.on) window.glimpse.on('prefetch:statusUpdated', handler);
+    return () => { if (window.glimpse?.off) window.glimpse.off('prefetch:statusUpdated', handler); };
   }, []);
 
-  /* Close menu on outside click */
+  /* Listen for menu:action from native menu */
   useEffect(() => {
-    if (!menuOpen) return;
-    function handleClick(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
+    const handler = (_event, action) => {
+      if (action === 'history' || action === 'downloads' || action === 'bookmarks' || action === 'settings') {
+        setSidebarTab(action);
+        setSidebarOpen(true);
       }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [menuOpen]);
+    };
+    if (window.glimpse?.on) window.glimpse.on('menu:action', handler);
+    return () => { if (window.glimpse?.off) window.glimpse.off('menu:action', handler); };
+  }, [setSidebarTab, setSidebarOpen]);
 
   const openSidebarTab = useCallback((tab) => {
     if (setSidebarTab) setSidebarTab(tab);
     toggleSidebar();
   }, [toggleSidebar, setSidebarTab]);
 
+  const handleShowMenu = useCallback(() => {
+    window.glimpse.app.showMenu();
+  }, []);
+
   return (
     <div className="toolbar">
-      <div className="toolbar__group">
-        <button
-          className="toolbar__btn"
-          onClick={() => openSidebarTab('bookmarks')}
-          title="Bookmarks"
-        >
-          <Icon name="star" size={15} />
-        </button>
+      <button className="toolbar__btn" onClick={() => openSidebarTab('bookmarks')} title="Bookmarks (Ctrl+D)">
+        ☆
+      </button>
+      <button className="toolbar__btn" onClick={() => openSidebarTab('downloads')} title="Downloads (Ctrl+J)">
+        ↓
+      </button>
 
-        <button
-          className="toolbar__btn"
-          onClick={() => openSidebarTab('downloads')}
-          title="Downloads"
-        >
-          <Icon name="download" size={15} />
-        </button>
-
-        {prefetchCount > 0 && (
-          <div className="toolbar__prefetch">
-            <Icon name="lightning" size={13} />
-            <span className="toolbar__prefetch-count">{prefetchCount} cached</span>
-          </div>
-        )}
-      </div>
+      {prefetchCount > 0 && (
+        <div className="toolbar__prefetch-badge">
+          ⚡ {prefetchCount} cached
+        </div>
+      )}
 
       <div className="toolbar__spacer" />
 
-      <div className="toolbar__group">
-        <button
-          className="toolbar__btn"
-          onClick={() => toggleSidebar()}
-          title="Toggle Sidebar"
-        >
-          <Icon name="sidebar" size={15} />
-        </button>
-
-        <div className="toolbar__menu-wrap" ref={menuRef}>
-          <button
-            className="toolbar__btn"
-            onClick={() => setMenuOpen((p) => !p)}
-            title="Menu"
-          >
-            <Icon name="menu" size={15} />
-          </button>
-
-          {menuOpen && (
-            <div className="toolbar__menu scale-in">
-              <button className="toolbar__menu-item" onClick={() => { window.glimpse.tabs.create('about:blank'); setMenuOpen(false); }}>
-                <Icon name="plus" size={16} /> <span>New Tab</span>
-                <span className="toolbar__menu-shortcut">Ctrl+T</span>
-              </button>
-              <div className="toolbar__menu-sep" />
-              <button className="toolbar__menu-item" onClick={() => { openSidebarTab('history'); setMenuOpen(false); }}>
-                <Icon name="clock" size={16} /> <span>History</span>
-                <span className="toolbar__menu-shortcut">Ctrl+H</span>
-              </button>
-              <button className="toolbar__menu-item" onClick={() => { openSidebarTab('bookmarks'); setMenuOpen(false); }}>
-                <Icon name="book-open" size={16} /> <span>Bookmarks</span>
-                <span className="toolbar__menu-shortcut">Ctrl+D</span>
-              </button>
-              <button className="toolbar__menu-item" onClick={() => { openSidebarTab('downloads'); setMenuOpen(false); }}>
-                <Icon name="download" size={16} /> <span>Downloads</span>
-                <span className="toolbar__menu-shortcut">Ctrl+J</span>
-              </button>
-              <div className="toolbar__menu-sep" />
-              <button className="toolbar__menu-item" onClick={() => { openSidebarTab('settings'); setMenuOpen(false); }}>
-                <Icon name="settings" size={16} /> <span>Settings</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+      <button className="toolbar__btn" onClick={() => toggleSidebar()} title="Toggle Sidebar">
+        ☰
+      </button>
+      <button className="toolbar__btn toolbar__menu-btn" onClick={handleShowMenu} title="Menu">
+        ⋮
+      </button>
     </div>
   );
 }

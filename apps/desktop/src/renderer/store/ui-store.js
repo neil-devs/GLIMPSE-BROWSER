@@ -17,6 +17,9 @@ const useUiStore = create((set, get) => ({
   setSidebarPanel: (panel) =>
     set({ sidebarOpen: true, sidebarPanel: panel }),
 
+  setSidebarTab: (tab) =>
+    set({ sidebarPanel: tab }),
+
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
