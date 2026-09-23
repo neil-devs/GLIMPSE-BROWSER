@@ -30,7 +30,12 @@ function createMainWindow(options = {}) {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#1b1e2b',
+      symbolColor: '#ffffff',
+      height: 40
+    },
     backgroundColor: '#1b1e2b',
     show: true,
   });
@@ -49,7 +54,7 @@ function createMainWindow(options = {}) {
   win.contentView.addChildView(chromeView);
 
   /* Position the chrome view at the top of the window */
-  const bounds = win.getBounds();
+  const bounds = win.getContentBounds();
   chromeView.setBounds({
     x: 0,
     y: 0,
@@ -75,7 +80,7 @@ function createMainWindow(options = {}) {
   /* ── Window Events ──────────────────────────────────────────── */
 
   win.on('resize', () => {
-    const newBounds = win.getBounds();
+    const newBounds = win.getContentBounds();
     chromeView.setBounds({
       x: 0,
       y: 0,

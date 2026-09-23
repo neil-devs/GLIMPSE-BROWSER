@@ -111,8 +111,12 @@ export default function AddressBar() {
     window.glimpse.app.showEngineMenu(defaultEngine);
   }, [defaultEngine]);
 
-  const handleShowMenu = useCallback(() => {
-    window.glimpse.app.showMenu();
+  const handleShowMenu = useCallback((e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    window.glimpse.app.showMenu({ 
+      x: rect.right - 260, 
+      y: rect.bottom + 5 
+    });
   }, []);
 
   const isSecure = activeTab?.url?.startsWith('https://');

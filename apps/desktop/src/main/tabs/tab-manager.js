@@ -195,7 +195,7 @@ function createTab(url = 'about:blank') {
   /* ── Position the view ──────────────────────────────────────── */
 
   if (mainWindow) {
-    const bounds = mainWindow.getBounds();
+    const bounds = mainWindow.getContentBounds();
     view.setBounds({
       x: 0,
       y: CHROME_HEIGHT,
@@ -253,9 +253,10 @@ function closeTab(tabId) {
   tabViews.delete(tabId);
   tabState.remove(tabId);
 
-  /* If no tabs left, create a new one */
-  if (tabViews.size === 0) {
-    createTab('about:blank');
+  /* If no tabs left, close the browser window */
+  if (tabViews.size === 0 && mainWindow) {
+    mainWindow.close();
+    return;
   }
 
   logger.info('Tab closed', { tabId });
@@ -330,7 +331,7 @@ function setActiveTab(tabId) {
       view.setVisible(!isBlank);
       /* Resize to fit the window */
       if (mainWindow) {
-        const bounds = mainWindow.getBounds();
+        const bounds = mainWindow.getContentBounds();
         view.setBounds({
           x: 0,
           y: CHROME_HEIGHT,
@@ -392,7 +393,7 @@ function getAllTabState() {
  */
 function onWindowResize() {
   if (!mainWindow) return;
-  const bounds = mainWindow.getBounds();
+  const bounds = mainWindow.getContentBounds();
   const activeId = tabState.getActiveId();
 
   for (const [id, view] of tabViews) {

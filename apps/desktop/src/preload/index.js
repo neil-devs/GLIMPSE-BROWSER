@@ -167,7 +167,7 @@ const appApi = {
   close: () => ipcRenderer.invoke(APP.CLOSE),
   isMaximized: () => ipcRenderer.invoke(APP.IS_MAXIMIZED),
   toggleFullscreen: () => ipcRenderer.invoke(APP.TOGGLE_FULLSCREEN),
-  showMenu: () => ipcRenderer.invoke(APP.SHOW_MENU),
+  showMenu: (pos) => ipcRenderer.invoke(APP.SHOW_MENU, pos),
   showEngineMenu: (currentEngine) => ipcRenderer.invoke(APP.SHOW_ENGINE_MENU, currentEngine),
   setOverlayActive: (active) => ipcRenderer.invoke(APP.SET_OVERLAY_ACTIVE, active),
 };

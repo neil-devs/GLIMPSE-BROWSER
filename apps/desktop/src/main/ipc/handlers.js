@@ -119,7 +119,7 @@ function registerAllHandlers(deps = {}) {
 
   /* ── Native Popup Menu (Chrome ⋮ style) ───────────────────── */
 
-  ipcMain.handle('app:showMenu', (event) => {
+  ipcMain.handle('app:showMenu', (event, pos) => {
     const win = require('electron').BrowserWindow.fromWebContents(event.sender);
     const tabManager = deps.tabManager;
 
@@ -253,7 +253,11 @@ function registerAllHandlers(deps = {}) {
     ];
 
     const menu = Menu.buildFromTemplate(template);
-    menu.popup({ window: win });
+    if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+      menu.popup({ window: win, x: Math.round(pos.x), y: Math.round(pos.y) });
+    } else {
+      menu.popup({ window: win });
+    }
   });
 
   /* ── Sub-handler Registrars ───────────────────────────────── */
