@@ -1,5 +1,6 @@
 appId: com.glimpse.browser
 productName: Glimpse Browser
+electronVersion: "33.4.11"
 directories:
   buildResources: build
   output: dist
