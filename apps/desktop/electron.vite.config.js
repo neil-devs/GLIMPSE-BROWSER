@@ -11,6 +11,15 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.js'),
         },
+        output: {
+          format: 'cjs',
+        },
+        external: [
+          'electron',
+          'better-sqlite3',
+          'electron-log',
+          'electron-updater',
+        ],
       },
     },
   },
@@ -22,6 +31,9 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/preload/index.js'),
           'tab-preload': resolve(__dirname, 'src/preload/tab-preload.js'),
+        },
+        output: {
+          format: 'cjs',
         },
       },
     },
