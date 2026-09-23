@@ -26,8 +26,11 @@ const tabViews = new Map();
 /** Reference to the BaseWindow */
 let mainWindow = null;
 
-/** Chrome height in pixels (tabs + addressbar + toolbar) */
-const CHROME_HEIGHT = 128;
+/** Reference to the chrome WebContentsView */
+let chromeView = null;
+
+/** Chrome height in pixels (tabs + addressbar) */
+const CHROME_HEIGHT = 82;
 
 /** Path to the tab preload script */
 const TAB_PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload', 'tab-preload.js');
@@ -35,9 +38,11 @@ const TAB_PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload', 'tab-preloa
 /**
  * Initialize the tab manager with the main window reference.
  * @param {Electron.BaseWindow} win
+ * @param {Electron.WebContentsView} chrome
  */
-function init(win) {
+function init(win, chrome) {
   mainWindow = win;
+  chromeView = chrome;
 
   /* Listen for tab-level IPC events from tab preload scripts */
   ipcMain.on('tab:link-visible', (event, data) => {
@@ -210,6 +215,11 @@ function createTab(url = 'about:blank') {
   /* Set as active tab */
   setActiveTab(tabId);
 
+  /* Hide the tab view for about:blank so the chrome NTP overlay is clickable */
+  if (!url || url === 'about:blank') {
+    view.setVisible(false);
+  }
+
   logger.info('Tab created', { tabId, url });
   return tabId;
 }
@@ -259,6 +269,12 @@ function closeTab(tabId) {
 function navigate(tabId, url) {
   const view = tabViews.get(tabId);
   if (!view || view.webContents.isDestroyed()) return;
+
+  /* Show the tab view when navigating to a real URL (was hidden for about:blank NTP) */
+  if (url && url !== 'about:blank') {
+    view.setVisible(true);
+  }
+
   view.webContents.loadURL(url);
 }
 
@@ -304,10 +320,14 @@ function setActiveTab(tabId) {
   const targetView = tabViews.get(tabId);
   if (!targetView) return;
 
+  const targetState = tabState.get(tabId);
+  const isBlank = !targetState?.url || targetState.url === 'about:blank';
+
   /* Hide all other tab views, show the target */
   for (const [id, view] of tabViews) {
     if (id === tabId) {
-      view.setVisible(true);
+      /* Hide tab view for about:blank so chrome NTP overlay is clickable */
+      view.setVisible(!isBlank);
       /* Resize to fit the window */
       if (mainWindow) {
         const bounds = mainWindow.getBounds();
@@ -396,6 +416,32 @@ function getTabView(tabId) {
   return tabViews.get(tabId) || null;
 }
 
+/**
+ * Set the overlay active state.
+ * When true, brings the chrome view to the top so modals/dropdowns render over the webpage.
+ * When false, brings the active tab back to the top.
+ * @param {boolean} active 
+ */
+function setOverlayActive(active) {
+  if (!mainWindow || !chromeView) return;
+
+  if (active) {
+    /* Bring chrome view to front */
+    mainWindow.contentView.removeChildView(chromeView);
+    mainWindow.contentView.addChildView(chromeView);
+  } else {
+    /* Bring active tab view to front */
+    const activeTabId = tabState.getActiveId();
+    if (activeTabId) {
+      const view = tabViews.get(activeTabId);
+      if (view) {
+        mainWindow.contentView.removeChildView(view);
+        mainWindow.contentView.addChildView(view);
+      }
+    }
+  }
+}
+
 module.exports = {
   init,
   createTab,
@@ -411,4 +457,5 @@ module.exports = {
   getAllTabState,
   onWindowResize,
   getTabView,
+  setOverlayActive,
 };

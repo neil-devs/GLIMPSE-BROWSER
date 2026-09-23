@@ -82,6 +82,41 @@ function registerAllHandlers(deps = {}) {
     }
   });
 
+  ipcMain.handle('app:setOverlayActive', (event, active) => {
+    if (deps.tabManager) {
+      deps.tabManager.setOverlayActive(active);
+    }
+  });
+
+  /* ── Engine Picker Native Menu ────────────────────────────── */
+
+  ipcMain.handle('app:showEngineMenu', (event, currentEngine) => {
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender);
+
+    const engines = [
+      { id: 'google', label: 'Google' },
+      { id: 'bing', label: 'Bing' },
+      { id: 'duckduckgo', label: 'DuckDuckGo' },
+      { id: 'yahoo', label: 'Yahoo' },
+      { id: 'baidu', label: 'Baidu' },
+      { id: 'yandex', label: 'Yandex' },
+    ];
+
+    const template = engines.map((eng) => ({
+      label: eng.label,
+      type: 'radio',
+      checked: eng.id === currentEngine,
+      click: () => {
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send('engine:selected', eng.id);
+        }
+      },
+    }));
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: win });
+  });
+
   /* ── Native Popup Menu (Chrome ⋮ style) ───────────────────── */
 
   ipcMain.handle('app:showMenu', (event) => {

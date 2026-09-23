@@ -1,44 +1,26 @@
-/* ═══════════════════════════════════════════════════════════════
-   NewTabPage — modern landing page
-   ═══════════════════════════════════════════════════════════════ */
+/* NewTabPage — Chrome-style polished shortcuts */
 
 .ntp {
-  width: 100%;
-  height: 100%;
+  position: fixed;
+  top: 82px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #0f1117;
+  z-index: 500;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: var(--color-bg-base);
-  position: relative;
+  align-items: flex-start;
+  justify-content: center;
   overflow-y: auto;
 }
 
-/* Subtle radial glow */
-.ntp__glow {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 800px;
-  height: 500px;
-  background: radial-gradient(
-    ellipse at 50% 30%,
-    rgba(108, 99, 255, 0.08) 0%,
-    transparent 70%
-  );
-  pointer-events: none;
-}
-
 .ntp__content {
-  position: relative;
-  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;
+  padding: 60px 40px 60px;
   max-width: 680px;
-  padding: 0 var(--space-8);
-  margin-top: 12vh;
+  width: 100%;
 }
 
 /* ── Logo ────────────────────────────────────────────────── */
@@ -47,202 +29,270 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-9);
+  margin-bottom: 52px;
+  position: relative;
+}
+
+.ntp__logo-glow {
+  position: absolute;
+  top: -20px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 .ntp__logo-icon {
-  width: 56px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-accent);
-  margin-bottom: var(--space-3);
-  filter: drop-shadow(0 0 12px rgba(108, 99, 255, 0.4));
+  font-size: 44px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+  animation: ntp-pulse 3s ease-in-out infinite;
+}
+
+@keyframes ntp-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 12px rgba(108,99,255,0.3)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 24px rgba(108,99,255,0.5)); }
 }
 
 .ntp__wordmark {
   font-size: 28px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
+  font-weight: 700;
+  margin: 0;
   letter-spacing: -0.5px;
-  line-height: 1;
+  background: linear-gradient(135deg, #ffffff 0%, #c4bfff 50%, #6c63ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .ntp__tagline {
-  font-size: var(--font-size-md);
-  color: var(--color-text-muted);
-  margin-top: var(--space-1);
+  font-size: 13px;
+  color: rgba(255,255,255,0.3);
+  margin: 8px 0 0;
+  font-weight: 400;
+  letter-spacing: 0.3px;
 }
 
-/* ── Search Bar ──────────────────────────────────────────── */
+/* ── Shortcuts Grid ──────────────────────────────────────── */
 
-.ntp__search {
-  width: 100%;
-  margin-bottom: var(--space-9);
-}
-
-.ntp__search-wrap {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  height: 48px;
-  background: var(--color-input-bg);
-  border: 1px solid var(--color-input-border);
-  border-radius: var(--radius-pill);
-  padding: 0 var(--space-7);
-  transition: all var(--transition-base);
-}
-
-.ntp__search-wrap:focus-within {
-  border-color: var(--color-input-border-focused);
-  box-shadow: var(--shadow-accent);
-  background: var(--color-input-bg-focused);
-}
-
-.ntp__search-icon {
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-.ntp__search-input {
-  flex: 1;
-  height: 100%;
-  font-size: var(--font-size-md);
-  color: var(--color-text-primary);
-  caret-color: var(--color-accent);
-}
-
-.ntp__search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-/* ── Speed Dial ──────────────────────────────────────────── */
-
-.speed-dial {
-  width: 100%;
-  margin-bottom: var(--space-9);
-}
-
-.speed-dial__grid {
+.ntp__shortcuts {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-6);
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
 }
 
-.speed-dial__card {
+@media (max-width: 600px) {
+  .ntp__shortcuts { grid-template-columns: repeat(4, 1fr); }
+}
+
+.ntp__shortcut {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-4);
-  height: 90px;
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  gap: 10px;
+  padding: 16px 8px 14px;
+  border-radius: 12px;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  position: relative;
-  transition: all var(--transition-base);
+  transition: background 150ms ease;
+  color: rgba(255,255,255,0.7);
+  font-family: inherit;
+  outline: none;
 }
 
-.speed-dial__card:hover {
-  border-color: var(--color-accent-subtle);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+.ntp__shortcut:hover {
+  background: rgba(255,255,255,0.06);
 }
 
-.speed-dial__card-favicon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  object-fit: contain;
+.ntp__shortcut:active {
+  background: rgba(255,255,255,0.1);
+  transform: scale(0.97);
 }
 
-.speed-dial__card-name {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
-}
+/* ── Favicon Circle ──────────────────────────────────────── */
 
-.speed-dial__card-remove {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-round);
-  color: var(--color-text-muted);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.speed-dial__card:hover .speed-dial__card-remove {
-  opacity: 1;
-}
-
-.speed-dial__card-remove:hover {
-  background: var(--color-error-subtle);
-  color: var(--color-error);
-}
-
-/* ── Recent History ──────────────────────────────────────── */
-
-.recent-history {
-  width: 100%;
-}
-
-.recent-history__label {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: var(--font-weight-semibold);
-  margin-bottom: var(--space-4);
-}
-
-.recent-history__list {
-  display: flex;
-  gap: var(--space-5);
-  overflow-x: auto;
-  padding-bottom: var(--space-4);
-}
-
-.recent-history__item {
+.ntp__shortcut-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.07);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-  max-width: 160px;
+  justify-content: center;
+  transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease;
+  overflow: hidden;
+  position: relative;
 }
 
-.recent-history__item:hover {
-  border-color: var(--color-border-strong);
-  color: var(--color-text-primary);
-  background: var(--color-bg-elevated);
+.ntp__shortcut:hover .ntp__shortcut-circle {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+  background: rgba(255,255,255,0.1);
 }
 
-.recent-history__item-favicon {
-  width: 14px;
-  height: 14px;
-  border-radius: 2px;
-  flex-shrink: 0;
+.ntp__shortcut-favicon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
 }
 
-.recent-history__item-title {
+.ntp__shortcut-letter {
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+}
+
+/* Add shortcut circle */
+.ntp__shortcut-circle--add {
+  background: rgba(255,255,255,0.04);
+  border: 2px dashed rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.3);
+}
+
+.ntp__shortcut:hover .ntp__shortcut-circle--add {
+  border-color: rgba(108,99,255,0.5);
+  background: rgba(108,99,255,0.08);
+  color: #6c63ff;
+}
+
+/* Label */
+.ntp__shortcut-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  max-width: 84px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+  color: rgba(255,255,255,0.55);
+  transition: color 150ms;
+}
+
+.ntp__shortcut:hover .ntp__shortcut-label {
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── Modal ────────────────────────────────────────────────── */
+
+.ntp__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: ntp-fade 150ms ease;
+  backdrop-filter: blur(4px);
+}
+
+@keyframes ntp-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ntp__modal {
+  background: #1e2130;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 28px;
+  width: 360px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  animation: ntp-pop 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes ntp-pop {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.ntp__modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+  margin: 0 0 20px;
+}
+
+.ntp__modal-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.ntp__modal-input {
+  width: 100%;
+  height: 42px;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 0 14px;
+  color: rgba(255,255,255,0.9);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 150ms, box-shadow 150ms;
+  box-sizing: border-box;
+}
+
+.ntp__modal-input:focus {
+  border-color: rgba(108,99,255,0.6);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.1);
+}
+
+.ntp__modal-input::placeholder {
+  color: rgba(255,255,255,0.2);
+}
+
+.ntp__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ntp__modal-btn {
+  height: 36px;
+  padding: 0 24px;
+  border-radius: 100px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms, transform 100ms;
+}
+
+.ntp__modal-btn:active {
+  transform: scale(0.97);
+}
+
+.ntp__modal-btn--cancel {
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+}
+
+.ntp__modal-btn--cancel:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.ntp__modal-btn--done {
+  background: #6c63ff;
+  color: white;
+}
+
+.ntp__modal-btn--done:hover {
+  background: #7c74ff;
 }

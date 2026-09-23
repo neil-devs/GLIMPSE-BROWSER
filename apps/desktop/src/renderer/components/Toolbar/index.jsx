@@ -45,13 +45,6 @@ export default function Toolbar() {
 
   return (
     <div className="toolbar">
-      <button className="toolbar__btn" onClick={() => openSidebarTab('bookmarks')} title="Bookmarks (Ctrl+D)">
-        ☆
-      </button>
-      <button className="toolbar__btn" onClick={() => openSidebarTab('downloads')} title="Downloads (Ctrl+J)">
-        ↓
-      </button>
-
       {prefetchCount > 0 && (
         <div className="toolbar__prefetch-badge">
           ⚡ {prefetchCount} cached
@@ -60,9 +53,6 @@ export default function Toolbar() {
 
       <div className="toolbar__spacer" />
 
-      <button className="toolbar__btn" onClick={() => toggleSidebar()} title="Toggle Sidebar">
-        ☰
-      </button>
       <button className="toolbar__btn toolbar__menu-btn" onClick={handleShowMenu} title="Menu">
         ⋮
       </button>

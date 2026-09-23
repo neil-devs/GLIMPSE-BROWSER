@@ -65,6 +65,8 @@ const APP = {
   MAXIMIZE: 'app:maximize', CLOSE: 'app:close',
   IS_MAXIMIZED: 'app:isMaximized', TOGGLE_FULLSCREEN: 'app:toggleFullscreen',
   SHOW_MENU: 'app:showMenu',
+  SHOW_ENGINE_MENU: 'app:showEngineMenu',
+  SET_OVERLAY_ACTIVE: 'app:setOverlayActive',
 };
 
 const AUTH = {
@@ -166,6 +168,8 @@ const appApi = {
   isMaximized: () => ipcRenderer.invoke(APP.IS_MAXIMIZED),
   toggleFullscreen: () => ipcRenderer.invoke(APP.TOGGLE_FULLSCREEN),
   showMenu: () => ipcRenderer.invoke(APP.SHOW_MENU),
+  showEngineMenu: (currentEngine) => ipcRenderer.invoke(APP.SHOW_ENGINE_MENU, currentEngine),
+  setOverlayActive: (active) => ipcRenderer.invoke(APP.SET_OVERLAY_ACTIVE, active),
 };
 
 /* ── Event System ───────────────────────────────────────────────── */

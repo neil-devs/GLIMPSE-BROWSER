@@ -85,7 +85,7 @@ app.whenReady().then(async () => {
   prefetchScheduler.setChromeWebContents(chromeWc);
 
   /* 7. Initialize the tab manager with the main window */
-  tabManager.init(mainWin);
+  tabManager.init(mainWin, chromeView);
 
   /* 8. Handle window resize — update tab views */
   mainWin.on('resize', () => {

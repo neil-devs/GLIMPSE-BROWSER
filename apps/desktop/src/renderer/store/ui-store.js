@@ -9,8 +9,11 @@ import { create } from 'zustand';
 const useUiStore = create((set, get) => ({
   sidebarOpen: false,
   sidebarPanel: 'bookmarks', /* 'bookmarks' | 'history' | 'settings' | 'downloads' */
+  overlayOpen: false,
   theme: 'dark', /* 'dark' | 'light' | 'system' */
   notifications: [],
+
+  setOverlayOpen: (open) => set({ overlayOpen: open }),
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 

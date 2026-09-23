@@ -14,8 +14,8 @@ const { BaseWindow, WebContentsView, app } = require('electron');
 const path = require('node:path');
 const { logger } = require('../utils/logger');
 
-/** Chrome height: tabs (40) + addressbar (52) + toolbar (36) = 128px */
-const CHROME_HEIGHT = 128;
+/** Chrome height: tabs (40) + addressbar (42) = 82px */
+const CHROME_HEIGHT = 82;
 
 /**
  * Create the main browser window with a chrome WebContentsView.
@@ -30,13 +30,8 @@ function createMainWindow(options = {}) {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: process.platform === 'win32' ? {
-      color: '#1a1a2e',
-      symbolColor: '#e8e8f0',
-      height: 28,
-    } : undefined,
-    backgroundColor: '#1a1a2e',
+    frame: false,
+    backgroundColor: '#1b1e2b',
     show: true,
   });
 

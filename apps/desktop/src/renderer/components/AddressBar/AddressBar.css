@@ -1,42 +1,43 @@
-/* AddressBar — Chrome-style URL bar */
+/* AddressBar — Chrome-style with engine picker */
 
 .address-bar {
   display: flex;
   align-items: center;
-  height: 52px;
-  background: #1a1d27;
-  padding: 0 12px;
-  gap: 6px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  -webkit-app-region: drag;
-}
-
-.address-bar * {
+  height: 42px;
+  background: #2d3148;
+  padding: 0 8px;
+  gap: 4px;
   -webkit-app-region: no-drag;
 }
 
-/* Nav buttons */
+/* ── Nav Buttons ─────────────────────────────────────────── */
+
+.address-bar__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 .address-bar__nav-btn {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: transparent;
   border: none;
-  color: rgba(255,255,255,0.7);
-  font-size: 16px;
+  color: rgba(255,255,255,0.65);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 150ms, color 150ms;
+  transition: background 120ms, color 120ms;
   flex-shrink: 0;
-  font-family: inherit;
   padding: 0;
 }
 
 .address-bar__nav-btn:hover:not(:disabled) {
-  background: rgba(255,255,255,0.09);
-  color: white;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.95);
 }
 
 .address-bar__nav-btn:disabled {
@@ -44,45 +45,82 @@
   cursor: default;
 }
 
-/* URL form */
+/* ── URL Pill ────────────────────────────────────────────── */
+
 .address-bar__form {
   flex: 1;
   display: flex;
   min-width: 0;
 }
 
-/* URL input wrapper — pill shape */
-.address-bar__input-wrapper {
+.address-bar__pill {
   flex: 1;
-  height: 36px;
+  height: 34px;
   background: rgba(255,255,255,0.07);
-  border: 1.5px solid rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.06);
   border-radius: 100px;
   display: flex;
   align-items: center;
-  padding: 0 14px;
-  gap: 8px;
-  transition: all 200ms ease;
+  padding: 0 12px 0 4px;
+  gap: 6px;
+  transition: all 180ms ease;
   cursor: text;
 }
 
-.address-bar__input-wrapper.focused {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(108,99,255,0.7);
-  box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+.address-bar__pill--focused {
+  background: rgba(255,255,255,0.11);
+  border-color: rgba(108,99,255,0.6);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.12);
+}
+
+/* ── Engine Trigger (badge + chevron) ────────────────────── */
+
+.address-bar__engine-trigger {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px 3px 3px;
+  border-radius: 100px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 120ms;
+  color: rgba(255,255,255,0.45);
+  flex-shrink: 0;
+}
+
+.address-bar__engine-trigger:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+}
+
+.address-bar__engine-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+}
+
+.address-bar__engine-chevron {
+  transition: transform 200ms ease;
 }
 
 /* Lock icon */
 .address-bar__lock {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
-  line-height: 1;
 }
 
-.address-bar__lock.secure { color: #34d399; }
+.address-bar__lock.secure { color: #34d399; opacity: 0.8; }
 .address-bar__lock.insecure { color: #fbbf24; }
 
-/* URL text input */
+/* URL input */
 .address-bar__input {
   flex: 1;
   background: transparent;
@@ -96,66 +134,29 @@
 }
 
 .address-bar__input::placeholder {
-  color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.3);
 }
 
-/* Engine pills row */
-.engine-pills {
+/* ── Menu Button ─────────────────────────────────────────── */
+
+.address-bar__menu-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.6);
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+  padding: 0;
   flex-shrink: 0;
   margin-left: 4px;
 }
 
-.engine-pill {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 100px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: transparent;
-  color: rgba(255,255,255,0.55);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 150ms ease;
-  white-space: nowrap;
-  font-family: inherit;
-}
-
-.engine-pill:hover {
-  background: rgba(255,255,255,0.07);
-  color: rgba(255,255,255,0.8);
-  border-color: rgba(255,255,255,0.18);
-}
-
-.engine-pill.active {
-  background: rgba(108,99,255,0.15);
-  border-color: rgba(108,99,255,0.5);
-  color: #a89dff;
-}
-
-.engine-pill__badge {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  color: white;
-  flex-shrink: 0;
-}
-
-.engine-pill__name {
-  pointer-events: none;
-}
-
-@media (max-width: 1100px) {
-  .engine-pill__name { display: none; }
-  .engine-pill { padding: 0 6px; }
+.address-bar__menu-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.95);
 }
