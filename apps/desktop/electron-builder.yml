@@ -6,7 +6,6 @@ directories:
   output: dist
 files:
   - out/**/*
-  - '!node_modules/**/*'
 asarUnpack:
   - '**/*.node'
 win:

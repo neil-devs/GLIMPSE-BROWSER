@@ -1,11 +1,12 @@
 import { resolve } from 'path';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import commonjs from '@rollup/plugin-commonjs';
+import nodeResolve from '@rollup/plugin-node-resolve';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), commonjs()],
+    plugins: [externalizeDepsPlugin(), nodeResolve(), commonjs()],
     build: {
       outDir: 'out/main',
       rollupOptions: {
@@ -18,14 +19,16 @@ export default defineConfig({
         external: [
           'electron',
           'better-sqlite3',
-          'electron-log',
-          'electron-updater',
         ],
       },
+      ssr: true,
     },
+    ssr: {
+      noExternal: true,
+    }
   },
   preload: {
-    plugins: [externalizeDepsPlugin(), commonjs()],
+    plugins: [externalizeDepsPlugin()],
     build: {
       outDir: 'out/preload',
       rollupOptions: {
@@ -40,7 +43,15 @@ export default defineConfig({
     },
   },
   renderer: {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'remove-crossorigin',
+        transformIndexHtml(html) {
+          return html.replace(/ crossorigin/g, '');
+        }
+      }
+    ],
     root: resolve(__dirname, 'src/renderer'),
     build: {
       outDir: resolve(__dirname, 'out/renderer'),

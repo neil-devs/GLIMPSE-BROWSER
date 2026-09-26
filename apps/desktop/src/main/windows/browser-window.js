@@ -54,13 +54,20 @@ function createMainWindow(options = {}) {
   win.contentView.addChildView(chromeView);
 
   /* Position the chrome view at the top of the window */
-  const bounds = win.getContentBounds();
-  chromeView.setBounds({
-    x: 0,
-    y: 0,
-    width: bounds.width,
-    height: bounds.height,
-  });
+  const updateBounds = () => {
+    let { width, height } = win.getContentBounds();
+    // On Windows, the content bounds can be 0x0 before the window is fully painted
+    if (width === 0 || height === 0) {
+      width = 1280;
+      height = 800;
+    }
+    chromeView.setBounds({
+      x: 0,
+      y: 0,
+      width: width,
+      height: height,
+    });
+  };
 
   /* ── Load the renderer ──────────────────────────────────────── */
 
@@ -68,26 +75,22 @@ function createMainWindow(options = {}) {
     chromeView.webContents.loadURL(options.rendererUrl);
   } else {
     /* Production: load from built files */
-    const indexPath = path.join(__dirname, '..', '..', '..', 'out', 'renderer', 'index.html');
+    const indexPath = path.join(app.getAppPath(), 'out', 'renderer', 'index.html');
     chromeView.webContents.loadFile(indexPath);
   }
 
-  /* Open DevTools in development for debugging */
-  if (!require('electron').app.isPackaged) {
-    chromeView.webContents.openDevTools({ mode: 'detach' });
-  }
+  chromeView.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    require('../utils/logger').logger.info('RENDERER CONSOLE:', { level, message, line, sourceId });
+  });
+
+  /* Open DevTools for debugging */
+  chromeView.webContents.openDevTools({ mode: 'detach' });
 
   /* ── Window Events ──────────────────────────────────────────── */
 
-  win.on('resize', () => {
-    const newBounds = win.getContentBounds();
-    chromeView.setBounds({
-      x: 0,
-      y: 0,
-      width: newBounds.width,
-      height: newBounds.height,
-    });
-  });
+  win.on('resize', updateBounds);
+  win.on('show', updateBounds);
+  updateBounds();
 
   chromeView.webContents.once('did-finish-load', () => {
     logger.info('Main window shown');

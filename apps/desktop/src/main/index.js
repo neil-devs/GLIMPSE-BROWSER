@@ -40,6 +40,10 @@ if (process.platform === 'win32') {
 
 /* We check the setting after DB init; for now, keep it enabled */
 
+/* ── Enable Chromium Print Preview ─────────────────────────────── */
+
+app.commandLine.appendSwitch('enable-print-preview');
+
 /* ── App Ready ──────────────────────────────────────────────────── */
 
 app.whenReady().then(async () => {

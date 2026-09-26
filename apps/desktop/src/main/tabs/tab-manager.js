@@ -9,7 +9,7 @@
 
 'use strict';
 
-const { WebContentsView, ipcMain } = require('electron');
+const { WebContentsView, ipcMain, app } = require('electron');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { logger } = require('../utils/logger');
@@ -33,7 +33,7 @@ let chromeView = null;
 const CHROME_HEIGHT = 82;
 
 /** Path to the tab preload script */
-const TAB_PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload', 'tab-preload.js');
+const TAB_PRELOAD_PATH = path.join(app.getAppPath(), 'out', 'preload', 'tab-preload.js');
 
 /**
  * Initialize the tab manager with the main window reference.
@@ -192,15 +192,168 @@ function createTab(url = 'about:blank') {
     return { action: 'deny' };
   });
 
+  /* ── Context Menu (Chrome-style) ─────────────────────────────── */
+
+  const { Menu, MenuItem, shell, clipboard } = require('electron');
+
+  wc.on('context-menu', (event, params) => {
+    const menu = new Menu();
+
+    // Navigation
+    menu.append(new MenuItem({
+      label: 'Back',
+      accelerator: 'Alt+Left',
+      enabled: wc.navigationHistory.canGoBack(),
+      click: () => wc.goBack()
+    }));
+
+    menu.append(new MenuItem({
+      label: 'Forward',
+      accelerator: 'Alt+Right',
+      enabled: wc.navigationHistory.canGoForward(),
+      click: () => wc.goForward()
+    }));
+
+    menu.append(new MenuItem({
+      label: 'Reload',
+      accelerator: 'CmdOrCtrl+R',
+      click: () => wc.reload()
+    }));
+
+    menu.append(new MenuItem({ type: 'separator' }));
+
+    // Selection/clipboard options
+    if (params.selectionText) {
+      menu.append(new MenuItem({
+        label: 'Copy',
+        accelerator: 'CmdOrCtrl+C',
+        click: () => wc.copy()
+      }));
+
+      menu.append(new MenuItem({
+        label: `Search Google for "${params.selectionText.substring(0, 30)}${params.selectionText.length > 30 ? '...' : ''}"`,
+        click: () => {
+          const query = encodeURIComponent(params.selectionText);
+          wc.loadURL(`https://www.google.com/search?q=${query}`);
+        }
+      }));
+
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    if (params.editFlags.canPaste) {
+      menu.append(new MenuItem({
+        label: 'Paste',
+        accelerator: 'CmdOrCtrl+V',
+        click: () => wc.paste()
+      }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    // Link options
+    if (params.linkURL) {
+      menu.append(new MenuItem({
+        label: 'Open link in new tab',
+        click: () => {
+          createTab(params.linkURL);
+        }
+      }));
+
+      menu.append(new MenuItem({
+        label: 'Copy link address',
+        click: () => clipboard.writeText(params.linkURL)
+      }));
+
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    // Image options
+    if (params.mediaType === 'image') {
+      menu.append(new MenuItem({
+        label: 'Save image as...',
+        click: () => wc.downloadURL(params.srcURL)
+      }));
+
+      menu.append(new MenuItem({
+        label: 'Copy image address',
+        click: () => clipboard.writeText(params.srcURL)
+      }));
+
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    // Save and print
+    menu.append(new MenuItem({
+      label: 'Save as...',
+      accelerator: 'CmdOrCtrl+S',
+      click: () => wc.downloadURL(wc.getURL())
+    }));
+
+    menu.append(new MenuItem({
+      label: 'Print...',
+      accelerator: 'CmdOrCtrl+P',
+      click: () => wc.executeJavaScript('window.print()')
+    }));
+
+    menu.append(new MenuItem({ type: 'separator' }));
+
+    // Page source and DevTools
+    menu.append(new MenuItem({
+      label: 'View page source',
+      accelerator: 'CmdOrCtrl+U',
+      click: () => {
+        const currentUrl = wc.getURL();
+        wc.loadURL(`view-source:${currentUrl}`);
+      }
+    }));
+
+    menu.append(new MenuItem({
+      label: 'Inspect',
+      accelerator: 'F12',
+      click: () => {
+        if (wc.isDevToolsOpened()) {
+          wc.closeDevTools();
+        } else {
+          wc.openDevTools({ mode: 'detach' });
+        }
+      }
+    }));
+
+    menu.popup();
+  });
+
+  /* ── Keyboard Shortcuts ─────────────────────────────────────── */
+
+  wc.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' && input.type === 'keyDown') {
+      if (wc.isDevToolsOpened()) {
+        wc.closeDevTools();
+      } else {
+        wc.openDevTools({ mode: 'detach' });
+      }
+    }
+    if (input.key === 'r' && input.control && input.type === 'keyDown') {
+      wc.reload();
+    }
+    if (input.key === 'p' && input.control && input.type === 'keyDown') {
+      event.preventDefault();
+      wc.executeJavaScript('window.print()');
+    }
+  });
+
   /* ── Position the view ──────────────────────────────────────── */
 
   if (mainWindow) {
-    const bounds = mainWindow.getContentBounds();
+    let { width, height } = mainWindow.getContentBounds();
+    if (width === 0 || height === 0) {
+      width = 1280;
+      height = 800;
+    }
     view.setBounds({
       x: 0,
       y: CHROME_HEIGHT,
-      width: bounds.width,
-      height: bounds.height - CHROME_HEIGHT,
+      width: width,
+      height: height - CHROME_HEIGHT,
     });
 
     /* Only add and show if this is the first tab or we're making it active */

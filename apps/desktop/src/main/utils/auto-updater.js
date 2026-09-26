@@ -74,10 +74,10 @@ function initAutoUpdater(webContents) {
     logger.error('Auto-updater error', { message: error.message });
   });
 
-  /* Check for updates after 5 second delay */
-  setTimeout(() => {
-    checkForUpdates();
-  }, 5000);
+  /* Check for updates after 5 second delay (Disabled due to dead update domain) */
+  // setTimeout(() => {
+  //   checkForUpdates();
+  // }, 5000);
 }
 
 /**
