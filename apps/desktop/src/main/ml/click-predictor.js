@@ -4,6 +4,11 @@
  * to predict which search result links the user is most likely to click.
  * No external ML packages required — uses pure decision tree traversal.
  *
+ * Supports multiple model formats:
+ * - Default bundled model (splitColumn/splitValue/distribution)
+ * - Cloud-exported model (featureIndex/threshold/type:'leaf')
+ * - ml-cart native format
+ *
  * @module desktop/ml/click-predictor
  */
 
@@ -89,27 +94,42 @@ function buildFeatureVector(url, position, domain, engine) {
 /**
  * Traverse a single decision tree node recursively.
  *
- * The model JSON tree structure follows the ml-cart format:
- * {
- *   splitColumn: number (feature index),
- *   splitValue: number (threshold),
- *   left: TreeNode (values <= threshold),
- *   right: TreeNode (values > threshold),
- *   distribution: number[] (leaf node class distribution)
- * }
+ * Handles MULTIPLE model formats:
+ *
+ * Format A (default/ml-cart):
+ *   { splitColumn, splitValue, left, right, distribution }
+ *
+ * Format B (cloud-exported via export-model.js):
+ *   { type:'split', featureIndex, threshold, left, right }
+ *   { type:'leaf', prediction, distribution }
  *
  * @param {object} node - Current tree node
  * @param {number[]} features - Feature vector
- * @returns {number} Predicted value (leaf distribution or mean)
+ * @returns {number} Predicted value (probability or raw score)
  */
 function traverseTree(node, features) {
-  /* Leaf node — return the predicted value */
-  if (node.distribution !== undefined) {
-    /* ml-cart format: distribution is array of class counts */
+  if (!node) return 0.5;
+
+  /* ── Leaf node detection ──────────────────────────────────── */
+
+  /* Format B: exported model leaf */
+  if (node.type === 'leaf') {
+    if (node.distribution && Array.isArray(node.distribution)) {
+      const total = node.distribution.reduce((a, b) => a + b, 0);
+      if (total === 0) return 0.5;
+      return node.distribution.length > 1
+        ? node.distribution[1] / total
+        : node.distribution[0] / total;
+    }
+    if (typeof node.prediction === 'number') return node.prediction;
+    return 0.5;
+  }
+
+  /* Format A: ml-cart distribution leaf */
+  if (node.distribution !== undefined && node.left === undefined && node.right === undefined) {
     if (Array.isArray(node.distribution)) {
       const total = node.distribution.reduce((a, b) => a + b, 0);
       if (total === 0) return 0.5;
-      /* Return probability of positive class (class 1) */
       return node.distribution.length > 1
         ? node.distribution[1] / total
         : node.distribution[0] / total;
@@ -118,18 +138,39 @@ function traverseTree(node, features) {
   }
 
   /* Regression tree leaf — value field */
-  if (node.value !== undefined) {
+  if (node.value !== undefined && node.left === undefined && node.right === undefined) {
     return node.value;
   }
 
-  /* Interior node — split on a feature */
-  if (node.splitColumn !== undefined && node.splitValue !== undefined) {
-    const featureValue = features[node.splitColumn] || 0;
-    if (featureValue <= node.splitValue) {
+  /* ── Interior node — split on a feature ───────────────────── */
+
+  /* Determine split column and value from either format */
+  const splitCol = node.splitColumn !== undefined ? node.splitColumn
+    : node.featureIndex !== undefined ? node.featureIndex
+    : undefined;
+  const splitVal = node.splitValue !== undefined ? node.splitValue
+    : node.threshold !== undefined ? node.threshold
+    : undefined;
+
+  if (splitCol !== undefined && splitVal !== undefined) {
+    const featureValue = features[splitCol] || 0;
+    if (featureValue <= splitVal) {
       return node.left ? traverseTree(node.left, features) : 0.5;
     } else {
       return node.right ? traverseTree(node.right, features) : 0.5;
     }
+  }
+
+  /* If node has distribution but also children — treat as leaf with distribution */
+  if (node.distribution !== undefined) {
+    if (Array.isArray(node.distribution)) {
+      const total = node.distribution.reduce((a, b) => a + b, 0);
+      if (total === 0) return 0.5;
+      return node.distribution.length > 1
+        ? node.distribution[1] / total
+        : node.distribution[0] / total;
+    }
+    return typeof node.distribution === 'number' ? node.distribution : 0.5;
   }
 
   /* Unknown node structure */
@@ -143,7 +184,11 @@ function traverseTree(node, features) {
  * @returns {number} Value between 0 and 1
  */
 function sigmoid(x) {
-  return 1 / (1 + Math.exp(-x));
+  if (x >= 0) {
+    return 1 / (1 + Math.exp(-x));
+  }
+  const expX = Math.exp(x);
+  return expX / (1 + expX);
 }
 
 /* ── Public API ─────────────────────────────────────────────────── */
@@ -168,27 +213,55 @@ function predictClickProbability(url, position, domain, engine) {
   const features = buildFeatureVector(url, position, domain, engine);
 
   try {
-    /* Gradient boosting ensemble: sum predictions from all trees */
-    if (Array.isArray(model.trees || model)) {
-      const trees = model.trees || model;
-      let rawScore = model.bias || 0;
-      const learningRate = model.learningRate || 0.1;
+    /* Determine the tree array — handle multiple model structures */
+    let trees = null;
+    let bias = 0;
+    let learningRate = 0.1;
 
-      for (const tree of trees) {
-        rawScore += learningRate * traverseTree(tree, features);
+    if (Array.isArray(model.trees)) {
+      trees = model.trees;
+      bias = model.bias || model.initialPrediction || 0;
+      learningRate = model.learningRate || 0.1;
+    } else if (Array.isArray(model)) {
+      trees = model;
+    }
+
+    if (trees && trees.length > 0) {
+      let rawScore = bias;
+
+      for (const treeEntry of trees) {
+        /* Handle multiple tree wrapper formats:
+         * - Direct tree node: { splitColumn, splitValue, left, right }
+         * - Exported wrapper: { root: {...}, leafValues: {...}, round: N }
+         * - Default model: { splitColumn, splitValue, left, right, distribution }
+         */
+        let treeNode = treeEntry;
+
+        /* Cloud-exported format: tree is wrapped in { root, leafValues, round } */
+        if (treeEntry.root) {
+          treeNode = treeEntry.root;
+        }
+
+        /* ml-cart format: tree may have a .root property from the classifier */
+        if (treeNode.root && !treeNode.splitColumn && !treeNode.featureIndex) {
+          treeNode = treeNode.root;
+        }
+
+        const treePrediction = traverseTree(treeNode, features);
+        rawScore += learningRate * treePrediction;
       }
 
       return sigmoid(rawScore);
     }
 
-    /* Single tree model */
-    if (model.splitColumn !== undefined) {
+    /* Single tree model (no array) */
+    if (model.splitColumn !== undefined || model.featureIndex !== undefined) {
       return traverseTree(model, features);
     }
 
     /* Unknown model format — fallback */
     return 1 / (position || 1);
-  } catch {
+  } catch (err) {
     return 1 / (position || 1);
   }
 }

@@ -54,6 +54,20 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
         var u = parsed.searchParams.get('u');
         if (u.startsWith('http')) return u;
       }
+      /* Yahoo redirect: r.search.yahoo.com paths carry the real URL
+         encoded in the path segment after /RU= */
+      if (parsed.hostname.indexOf('r.search.yahoo.com') !== -1
+          || parsed.hostname.indexOf('search.yahoo.com') !== -1) {
+        var ruMatch = href.match(/\\/RU=([^/]+)/);
+        if (ruMatch) {
+          try { return decodeURIComponent(ruMatch[1]); } catch(e2) { /* fall through */ }
+        }
+      }
+      /* DuckDuckGo redirect: uddg= param */
+      if (parsed.searchParams.has('uddg')) {
+        var ddg = parsed.searchParams.get('uddg');
+        if (ddg.startsWith('http')) return ddg;
+      }
       return href;
     } catch(e) {
       return href;
@@ -91,6 +105,35 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
     }
   }
 
+  /* ── Scroll position tracking ──────────────────────────────── */
+
+  var lastScrollY = -1;
+  var scrollThrottle = null;
+
+  function reportScrollPosition() {
+    var sy = window.scrollY || window.pageYOffset || 0;
+    /* Only send when the position actually changed meaningfully (>50px) */
+    if (Math.abs(sy - lastScrollY) < 50 && lastScrollY !== -1) return;
+    lastScrollY = sy;
+
+    sendToMain('scroll-position', {
+      scrollY: sy,
+      viewportHeight: window.innerHeight,
+      documentHeight: document.documentElement.scrollHeight,
+    });
+  }
+
+  window.addEventListener('scroll', function() {
+    if (scrollThrottle) return;
+    scrollThrottle = setTimeout(function() {
+      scrollThrottle = null;
+      reportScrollPosition();
+    }, 250);
+  }, { passive: true });
+
+  /* Send initial scroll position */
+  reportScrollPosition();
+
   /* ── IntersectionObserver ──────────────────────────────────── */
 
   var observer = new IntersectionObserver(
@@ -105,7 +148,7 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
 
         if (entry.isIntersecting) {
           if (!VISIBLE_URLS.has(url)) {
-            VISIBLE_URLS.set(url, { position: position, domain: domain });
+            VISIBLE_URLS.set(url, { position: position, domain: domain, visibleSince: Date.now() });
             sendToMain('link-visible', { url: url, position: position, domain: domain });
           }
         } else {
@@ -187,6 +230,7 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
     OBSERVED.clear();
     VISIBLE_URLS.clear();
     window.__glimpseInjected = false;
+    if (scrollThrottle) { clearTimeout(scrollThrottle); scrollThrottle = null; }
   });
 
   console.log('[Glimpse] Visibility detector injected');

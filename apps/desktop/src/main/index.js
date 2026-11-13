@@ -25,6 +25,7 @@ const tabState = require('./tabs/tab-state');
 const prefetchScheduler = require('./prefetch/prefetch-scheduler');
 const cacheManager = require('./prefetch/cache-manager');
 const modelLoader = require('./ml/model-loader');
+const telemetryClient = require('./sync/sync-client');
 
 /* ── Error Handlers ─────────────────────────────────────────────── */
 
@@ -68,6 +69,9 @@ app.whenReady().then(async () => {
   modelLoader.refreshModel().catch((err) => {
     logger.debug('ML model refresh skipped', { message: err.message });
   });
+
+  /* 3b. Initialize the telemetry client */
+  telemetryClient.init();
 
   /* 4. Register all IPC handlers */
   registerAllHandlers({
@@ -126,4 +130,5 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   logger.info('Glimpse Browser shutting down');
+  telemetryClient.shutdown().catch(() => { /* best effort */ });
 });

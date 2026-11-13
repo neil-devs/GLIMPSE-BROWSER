@@ -6,7 +6,7 @@
  * This is the central orchestrator that ties together:
  * - visibility-detector (link detection)
  * - click-predictor (ML scoring)
- * - speculation-injector (Chromium prefetch)
+ * - speculation-injector (net.request prefetch)
  * - bandwidth-guard (network checks)
  * - cache-manager (tracking)
  *
@@ -37,10 +37,12 @@ function getClickPredictor() {
 
 /* ── State ──────────────────────────────────────────────────────── */
 
-/** Currently visible URLs on the active search results page */
+/** Currently visible URLs on the active search results page.
+ *  Values include `firstSeenAt` — the timestamp when the link first became
+ *  visible, used to enforce `minVisibilityDuration`. */
 const visibleUrls = new Map();
 
-/** URLs that have already been added to speculation rules */
+/** URLs that have already been prefetched */
 const prefetchedUrls = new Set();
 
 /** Current aggressiveness level */
@@ -83,13 +85,16 @@ function onLinkVisible(url, position, domain, webContents) {
   /* Store the active webContents reference */
   activeWebContents = webContents;
 
-  /* Add to visible URLs */
-  visibleUrls.set(url, {
-    url,
-    position,
-    domain,
-    addedAt: Date.now(),
-  });
+  /* Only record firstSeenAt once — don't reset on re-entry */
+  if (!visibleUrls.has(url)) {
+    visibleUrls.set(url, {
+      url,
+      position,
+      domain,
+      addedAt: Date.now(),
+      firstSeenAt: Date.now(),
+    });
+  }
 
   /* Debounce to batch multiple simultaneous visibility events */
   clearTimeout(prefetchTimer);
@@ -99,11 +104,14 @@ function onLinkVisible(url, position, domain, webContents) {
 }
 
 /**
- * Core prefetch logic — evaluate and inject speculation rules.
+ * Core prefetch logic — evaluate visibility duration and fire net.request.
  * @param {Electron.WebContents} webContents
  */
 async function triggerPrefetch(webContents) {
   if (!webContents || webContents.isDestroyed()) return;
+
+  /* Ensure bandwidth guard has autodetected at least once */
+  bandwidthGuard.autoDetectNetwork();
 
   /* Check bandwidth guard */
   const guard = bandwidthGuard.shouldPrefetch();
@@ -116,21 +124,37 @@ async function triggerPrefetch(webContents) {
   const effectiveAggressiveness = guard.suggestedAggressiveness || aggressiveness;
   const config = PREFETCH_CONFIG[effectiveAggressiveness];
   const effectiveMax = config ? config.maxConcurrent : 4;
+  const minVisMs = config ? config.minVisibilityDuration : 800;
 
   /* Don't exceed concurrent limit */
   if (prefetchedUrls.size >= effectiveMax) {
     return;
   }
 
-  /* Score and rank all pending visible URLs */
+  const now = Date.now();
+
+  /* Score and rank all pending visible URLs that have been visible long enough */
   const pendingUrls = [];
   for (const [pendingUrl, info] of visibleUrls) {
-    if (!prefetchedUrls.has(pendingUrl) && !cacheManager.isPrefetched(pendingUrl)) {
-      pendingUrls.push(info);
+    if (prefetchedUrls.has(pendingUrl) || cacheManager.isPrefetched(pendingUrl)) {
+      continue;
     }
+    /* Enforce minimum visibility duration */
+    if (now - info.firstSeenAt < minVisMs) {
+      continue;
+    }
+    pendingUrls.push(info);
   }
 
-  if (pendingUrls.length === 0) return;
+  if (pendingUrls.length === 0) {
+    /* Some links may still be below the duration threshold — reschedule */
+    const earliestReady = findEarliestReadyTime(minVisMs, now);
+    if (earliestReady > 0) {
+      clearTimeout(prefetchTimer);
+      prefetchTimer = setTimeout(() => triggerPrefetch(webContents), earliestReady);
+    }
+    return;
+  }
 
   /* Use ML click predictor to rank */
   const predictor = getClickPredictor();
@@ -148,14 +172,14 @@ async function triggerPrefetch(webContents) {
 
   if (toPrefetch.length === 0) return;
 
-  /* Inject speculation rules */
-  const allPrefetchUrls = [...prefetchedUrls, ...toPrefetch];
-  const success = await injectSpeculationRules(webContents, allPrefetchUrls, 'prefetch');
+  /* Prefetch via net.request (populates HTTP cache) */
+  const result = await injectSpeculationRules(webContents, toPrefetch, 'prefetch');
 
-  if (success) {
-    for (const prefetchUrl of toPrefetch) {
+  if (result && result.succeeded && result.succeeded.length > 0) {
+    for (const prefetchUrl of result.succeeded) {
       prefetchedUrls.add(prefetchUrl);
-      cacheManager.recordPrefetch(prefetchUrl, 0);
+      const sizeBytes = (result.bytes && result.bytes[prefetchUrl]) || 0;
+      cacheManager.recordPrefetch(prefetchUrl, sizeBytes);
 
       /* Log to SQLite (lazy-load to avoid circular deps) */
       try {
@@ -167,11 +191,38 @@ async function triggerPrefetch(webContents) {
       notifyChrome('prefetch:completed', { url: prefetchUrl });
     }
 
-    logger.info('Prefetch rules updated', {
-      newUrls: toPrefetch.length,
+    logger.info('Prefetch completed', {
+      succeeded: result.succeeded.length,
+      failed: result.failed ? result.failed.length : 0,
       totalPrefetched: prefetchedUrls.size,
     });
   }
+
+  /* Log failures */
+  if (result && result.failed && result.failed.length > 0) {
+    for (const failedUrl of result.failed) {
+      try {
+        const { logPrefetchEntry } = require('../ipc/prefetch-handlers');
+        logPrefetchEntry(failedUrl, 0, 'failed');
+      } catch { /* best effort */ }
+    }
+  }
+}
+
+/**
+ * Find how many ms until the earliest not-yet-eligible link becomes eligible.
+ * Returns 0 if there are none waiting.
+ */
+function findEarliestReadyTime(minVisMs, now) {
+  let earliest = Infinity;
+  for (const [url, info] of visibleUrls) {
+    if (prefetchedUrls.has(url) || cacheManager.isPrefetched(url)) continue;
+    const ready = info.firstSeenAt + minVisMs;
+    if (ready > now && ready < earliest) {
+      earliest = ready;
+    }
+  }
+  return earliest === Infinity ? 0 : earliest - now + 10; /* +10ms buffer */
 }
 
 /**
@@ -207,6 +258,12 @@ function onPageNavigate() {
   prefetchedUrls.clear();
   activeWebContents = null;
   clearTimeout(prefetchTimer);
+
+  /* Abort in-flight prefetches and reset state from the previous page */
+  try {
+    const { resetState } = require('./speculation-injector');
+    resetState();
+  } catch { /* best effort */ }
 }
 
 /**

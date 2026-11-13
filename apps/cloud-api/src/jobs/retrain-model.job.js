@@ -16,7 +16,7 @@ const { exportModel } = require('../ml/export-model');
 const logger = require('../utils/logger');
 
 const ACCURACY_THRESHOLD = 0.70;
-const MIN_TRAINING_ROWS = 10000;
+const MIN_TRAINING_ROWS = 100;
 const TRAINING_WINDOW_DAYS = 30;
 
 /**
@@ -149,6 +149,123 @@ async function runRetraining() {
 }
 
 /**
+ * Generate synthetic seed data for initial model training.
+ * Creates realistic click patterns based on known user behavior:
+ * - Top 3 results get ~60-70% of clicks
+ * - Higher positions get more clicks
+ * - Well-known domains get more clicks
+ *
+ * @param {number} [count=500] - Number of synthetic rows to generate
+ * @returns {Array<object>}
+ */
+function generateSeedData(count = 500) {
+  const engines = ['google', 'bing', 'duckduckgo', 'yahoo'];
+  const domains = [
+    'wikipedia.org', 'stackoverflow.com', 'github.com', 'medium.com',
+    'reddit.com', 'youtube.com', 'amazon.com', 'nytimes.com',
+    'bbc.com', 'developer.mozilla.org', 'docs.python.org',
+    'example.com', 'randomsite.io', 'unknown-blog.net',
+  ];
+  const queries = [
+    'how to learn javascript', 'best programming language 2024',
+    'react vs vue', 'node.js tutorial', 'python machine learning',
+    'css flexbox guide', 'rest api design', 'git merge vs rebase',
+    'docker tutorial', 'kubernetes basics', 'aws vs gcp',
+    'typescript handbook', 'next.js tutorial', 'web security best practices',
+  ];
+
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    const position = Math.floor(Math.random() * 10) + 1;
+    const domain = domains[Math.floor(Math.random() * domains.length)];
+    const engine = engines[Math.floor(Math.random() * engines.length)];
+    const query = queries[Math.floor(Math.random() * queries.length)];
+    const isTopDomain = ['wikipedia.org', 'stackoverflow.com', 'github.com',
+      'developer.mozilla.org'].includes(domain);
+    const isTop3 = position <= 3;
+
+    /* Click probability model: position + domain + randomness */
+    let clickProb = Math.max(0, 0.8 - position * 0.08);
+    if (isTopDomain) clickProb += 0.15;
+    if (isTop3) clickProb += 0.10;
+    clickProb = Math.min(1, clickProb);
+
+    const wasClicked = Math.random() < clickProb;
+
+    rows.push({
+      url: `https://${domain}/page-${i}`,
+      domain,
+      linkPosition: position,
+      wasVisibleOnLoad: Math.random() < (isTop3 ? 0.95 : 0.6),
+      wasPrefetched: true,
+      prefetchDurationMs: Math.floor(Math.random() * 2000) + 100,
+      wasClicked,
+      searchEngine: engine,
+      queryText: query,
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * Run retraining with synthetic seed data.
+ * Used for initial model bootstrap when no real telemetry data exists yet.
+ */
+async function runSeedTraining() {
+  logger.info('Running seed training with synthetic data...');
+  const seedData = generateSeedData(500);
+
+  try {
+    const { model, testX, testY, featureNames } = await trainModel(seedData);
+    const metrics = evaluateModel(model, testX, testY);
+    logger.info('Seed model evaluation', { metrics });
+
+    const { filePath, fileSizeBytes, versionString } = await exportModel(
+      model, featureNames, metrics
+    );
+    logger.info('Seed model exported', { filePath, fileSizeBytes });
+
+    /* Deactivate any existing active model */
+    await supabase
+      .from('ml_model_versions')
+      .update({ is_active: false })
+      .eq('is_active', true)
+      .eq('model_type', 'click_predictor');
+
+    /* Insert seed model as active */
+    await supabase.from('ml_model_versions').insert({
+      version_string: versionString,
+      model_type: 'click_predictor',
+      training_data_count: seedData.length,
+      accuracy_score: metrics.accuracy,
+      precision_score: metrics.precision,
+      recall_score: metrics.recall,
+      f1_score: metrics.f1,
+      auc_roc_score: metrics.aucRoc,
+      model_file_path: 'models/latest.json',
+      model_file_size_bytes: fileSizeBytes,
+      is_active: true,
+      trained_at: new Date().toISOString(),
+      deployed_at: new Date().toISOString(),
+    });
+
+    logger.info('Seed model deployed successfully', { version: versionString });
+  } catch (err) {
+    logger.error('Seed training failed', { error: err.message, stack: err.stack });
+  }
+}
+
+/* CLI support: node retrain-model.job.js --seed */
+if (require.main === module) {
+  if (process.argv.includes('--seed')) {
+    runSeedTraining().then(() => process.exit(0)).catch(() => process.exit(1));
+  } else {
+    runRetraining().then(() => process.exit(0)).catch(() => process.exit(1));
+  }
+}
+
+/**
  * Schedule the retraining job.
  * Cron: every Sunday at 2:00 AM UTC
  */
@@ -164,5 +281,7 @@ function scheduleRetraining() {
 
 module.exports = {
   scheduleRetraining,
-  runRetraining, /* exported for manual triggering / testing */
+  runRetraining,
+  runSeedTraining,
+  generateSeedData,
 };

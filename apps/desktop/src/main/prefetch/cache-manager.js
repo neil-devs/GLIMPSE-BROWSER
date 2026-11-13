@@ -27,6 +27,10 @@ const cache = new Map();
 /** Maximum cache size in bytes (loaded from settings, default 500MB) */
 let maxCacheSizeBytes = 500 * 1024 * 1024;
 
+/** Lifetime counters for hit-rate calculation */
+let totalPrefetches = 0;
+let totalHits = 0;
+
 /**
  * Initialize the cache manager with current settings.
  */
@@ -51,8 +55,26 @@ function recordPrefetch(url, sizeBytes = 0) {
     lastAccessedAt: Date.now(),
   });
 
+  totalPrefetches++;
+
   /* Enforce cache size limit */
   enforceSizeLimit();
+}
+
+/**
+ * Update the recorded size of a previously-prefetched URL.
+ * Call this once the net.request response has completed and the real
+ * content-length is known.
+ *
+ * @param {string} url
+ * @param {number} sizeBytes - Actual response size in bytes
+ */
+function recordPrefetchSize(url, sizeBytes) {
+  const entry = cache.get(url);
+  if (entry) {
+    entry.sizeBytes = sizeBytes;
+    enforceSizeLimit();
+  }
 }
 
 /**
@@ -65,6 +87,7 @@ function recordHit(url) {
   if (entry) {
     entry.hitCount++;
     entry.lastAccessedAt = Date.now();
+    totalHits++;
   }
 }
 
@@ -88,17 +111,28 @@ function getCachedUrls() {
 }
 
 /**
+ * Get the lifetime cache hit rate as a value between 0 and 1.
+ * Returns 0 when no prefetches have been recorded yet.
+ *
+ * @returns {number}
+ */
+function getCacheHitRate() {
+  if (totalPrefetches === 0) return 0;
+  return totalHits / totalPrefetches;
+}
+
+/**
  * Get cache status summary.
  *
- * @returns {{ count: number, totalSizeMb: string, urls: string[], maxSizeMb: number, hitRate: number }}
+ * @returns {{ count: number, totalSizeMb: string, urls: string[], maxSizeMb: number, hitRate: string, lifetimeHitRate: string }}
  */
 function getStatus() {
   let totalBytes = 0;
-  let totalHits = 0;
+  let sessionHits = 0;
 
   for (const entry of cache.values()) {
     totalBytes += entry.sizeBytes;
-    totalHits += entry.hitCount;
+    sessionHits += entry.hitCount;
   }
 
   return {
@@ -107,7 +141,8 @@ function getStatus() {
     totalSizeBytes: totalBytes,
     urls: getCachedUrls(),
     maxSizeMb: maxCacheSizeBytes / (1024 * 1024),
-    hitRate: cache.size > 0 ? (totalHits / cache.size).toFixed(2) : '0.00',
+    hitRate: cache.size > 0 ? (sessionHits / cache.size).toFixed(2) : '0.00',
+    lifetimeHitRate: getCacheHitRate().toFixed(4),
   };
 }
 
@@ -165,9 +200,11 @@ function enforceSizeLimit() {
 module.exports = {
   init,
   recordPrefetch,
+  recordPrefetchSize,
   recordHit,
   isPrefetched,
   getCachedUrls,
+  getCacheHitRate,
   getStatus,
   clearAll,
   setCacheSizeLimit,

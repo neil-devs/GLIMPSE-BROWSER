@@ -21,6 +21,15 @@ const prefetchScheduler = require('../prefetch/prefetch-scheduler');
 const history = require('../storage/history');
 const { buildErrorPageHtml } = require('../utils/error-handler');
 
+/** Lazy-load telemetry client to avoid circular deps */
+let _telemetry = null;
+function getTelemetry() {
+  if (!_telemetry) {
+    try { _telemetry = require('../sync/sync-client'); } catch { _telemetry = null; }
+  }
+  return _telemetry;
+}
+
 /** Map of tabId → WebContentsView */
 const tabViews = new Map();
 
@@ -55,9 +64,29 @@ function init(win, chrome) {
     prefetchScheduler.onLinkHidden(data.url);
   });
 
+  ipcMain.on('prefetch:viewport-info', (_event, data) => {
+    logger.debug('Viewport info', {
+      screen: `${data.screenWidth}x${data.screenHeight}`,
+      window: `${data.windowWidth}x${data.windowHeight}`,
+      dpr: data.devicePixelRatio,
+    });
+  });
+
   ipcMain.on('prefetch:link-clicked', (_event, data) => {
     logger.debug('Link clicked', { url: (data.url || '').substring(0, 60), fromCache: data.fromCache });
     prefetchScheduler.onLinkClicked(data.url, data.fromCache);
+
+    /* Log page load event for telemetry (cache hit tracking) */
+    try {
+      const tel = getTelemetry();
+      if (tel) {
+        tel.logPageLoad({
+          url: data.url,
+          fromCache: data.fromCache || false,
+          position: data.position || 0,
+        });
+      }
+    } catch { /* best effort */ }
   });
 }
 
@@ -251,6 +280,48 @@ function createTab(url = 'about:blank') {
       wc.executeJavaScript(script).catch((err) => {
         logger.error('Failed to inject visibility detector', { message: err.message });
       });
+
+      /* Inject viewport info reporter (screen resolution, window size) */
+      const viewportScript = `
+        (function() {
+          if (typeof window.__glimpseIPC !== 'function') return;
+          window.__glimpseIPC('viewport-info', {
+            screenWidth: screen.width,
+            screenHeight: screen.height,
+            windowWidth: window.innerWidth,
+            windowHeight: window.innerHeight,
+            devicePixelRatio: window.devicePixelRatio || 1,
+          });
+          window.addEventListener('resize', function() {
+            window.__glimpseIPC('viewport-info', {
+              screenWidth: screen.width,
+              screenHeight: screen.height,
+              windowWidth: window.innerWidth,
+              windowHeight: window.innerHeight,
+              devicePixelRatio: window.devicePixelRatio || 1,
+            });
+          });
+        })();
+      `;
+      wc.executeJavaScript(viewportScript).catch(() => { /* best effort */ });
+
+      /* Log search event for telemetry */
+      try {
+        const tel = getTelemetry();
+        if (tel) {
+          /* Extract query from the URL */
+          const parsed = new URL(currentUrl);
+          const queryText = parsed.searchParams.get('q')
+            || parsed.searchParams.get('p')
+            || parsed.searchParams.get('text')
+            || parsed.searchParams.get('wd')
+            || '';
+          tel.logSearchEvent({
+            searchEngine: adapter.name,
+            queryText,
+          });
+        }
+      } catch { /* best effort */ }
     }
   });
 
