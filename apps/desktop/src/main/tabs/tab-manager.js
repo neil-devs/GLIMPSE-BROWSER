@@ -11,6 +11,7 @@
 
 const { WebContentsView, ipcMain, app } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const { randomUUID } = require('node:crypto');
 const { logger } = require('../utils/logger');
 const tabState = require('./tab-state');
@@ -44,18 +45,106 @@ function init(win, chrome) {
   mainWindow = win;
   chromeView = chrome;
 
-  /* Listen for tab-level IPC events from tab preload scripts */
-  ipcMain.on('tab:link-visible', (event, data) => {
+  /* Listen for prefetch IPC events from tab preload bridge (__glimpseIPC) */
+  ipcMain.on('prefetch:link-visible', (event, data) => {
+    logger.debug('Link visible', { url: (data.url || '').substring(0, 60), position: data.position });
     prefetchScheduler.onLinkVisible(data.url, data.position, data.domain, event.sender);
   });
 
-  ipcMain.on('tab:link-hidden', (_event, data) => {
+  ipcMain.on('prefetch:link-hidden', (_event, data) => {
     prefetchScheduler.onLinkHidden(data.url);
   });
 
-  ipcMain.on('tab:link-clicked', (_event, data) => {
+  ipcMain.on('prefetch:link-clicked', (_event, data) => {
+    logger.debug('Link clicked', { url: (data.url || '').substring(0, 60), fromCache: data.fromCache });
     prefetchScheduler.onLinkClicked(data.url, data.fromCache);
   });
+}
+
+/**
+ * Open a print preview as an inline overlay inside the main window.
+ * Generates a PDF and displays it using Chromium's built-in PDF viewer
+ * as a WebContentsView overlay. Press Escape to close the preview.
+ *
+ * @param {Electron.WebContents} webContents
+ */
+let printPreviewView = null;
+
+function openPrintPreview(webContents) {
+  /* Don't open multiple previews */
+  if (printPreviewView) return;
+
+  webContents.printToPDF({ printBackground: true }).then((pdfData) => {
+    const tmpPath = path.join(app.getPath('temp'), `glimpse-print-${Date.now()}.pdf`);
+    fs.writeFileSync(tmpPath, pdfData);
+
+    printPreviewView = new WebContentsView({
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    /* Position: cover only the tab content area (below chrome bar) */
+    if (mainWindow) {
+      let { width, height } = mainWindow.getContentBounds();
+      if (width === 0 || height === 0) { width = 1280; height = 800; }
+      printPreviewView.setBounds({ x: 0, y: CHROME_HEIGHT, width, height: height - CHROME_HEIGHT });
+      mainWindow.contentView.addChildView(printPreviewView);
+    }
+
+    printPreviewView.webContents.loadURL(`file://${tmpPath.replace(/\\/g, '/')}`);
+
+    /* Close on Escape key */
+    printPreviewView.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'Escape' && input.type === 'keyDown') {
+        closePrintPreview(tmpPath);
+      }
+    });
+
+    /* Also handle window resize */
+    const onResize = () => {
+      if (!printPreviewView || !mainWindow) return;
+      let { width, height } = mainWindow.getContentBounds();
+      if (width === 0 || height === 0) { width = 1280; height = 800; }
+      printPreviewView.setBounds({ x: 0, y: CHROME_HEIGHT, width, height: height - CHROME_HEIGHT });
+    };
+    mainWindow.on('resize', onResize);
+
+    /* Clean up resize listener when preview closes */
+    printPreviewView._onResize = onResize;
+    printPreviewView._tmpPath = tmpPath;
+
+  }).catch((err) => {
+    logger.error('Print preview failed', { message: err.message });
+  });
+}
+
+/**
+ * Close the print preview overlay and clean up.
+ * @param {string} [tmpPath] - Path to the temp PDF file to delete
+ */
+function closePrintPreview(tmpPath) {
+  if (!printPreviewView) return;
+
+  if (mainWindow) {
+    try {
+      mainWindow.contentView.removeChildView(printPreviewView);
+      if (printPreviewView._onResize) {
+        mainWindow.removeListener('resize', printPreviewView._onResize);
+      }
+    } catch {}
+  }
+
+  /* Destroy the view */
+  try { printPreviewView.webContents.close(); } catch {}
+  printPreviewView = null;
+
+  /* Delete the temp PDF */
+  const fileToDelete = tmpPath || '';
+  if (fileToDelete) {
+    try { fs.unlinkSync(fileToDelete); } catch {}
+  }
 }
 
 /**
@@ -292,7 +381,7 @@ function createTab(url = 'about:blank') {
     menu.append(new MenuItem({
       label: 'Print...',
       accelerator: 'CmdOrCtrl+P',
-      click: () => wc.executeJavaScript('window.print()')
+      click: () => openPrintPreview(wc)
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
@@ -337,7 +426,7 @@ function createTab(url = 'about:blank') {
     }
     if (input.key === 'p' && input.control && input.type === 'keyDown') {
       event.preventDefault();
-      wc.executeJavaScript('window.print()');
+      openPrintPreview(wc);
     }
   });
 
