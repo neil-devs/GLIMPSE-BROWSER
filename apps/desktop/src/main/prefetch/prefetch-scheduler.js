@@ -3,12 +3,12 @@
  * Coordinates the prefetch engine: decides WHICH visible links get prefetched
  * and in what ORDER based on ML predictions and bandwidth constraints.
  *
- * This is the central orchestrator that ties together:
- * - visibility-detector (link detection)
- * - click-predictor (ML scoring)
- * - speculation-injector (net.request prefetch)
- * - bandwidth-guard (network checks)
- * - cache-manager (tracking)
+ * Rewired to use preload-pool (WebContentsView pool) for instant-open,
+ * instead of the old net.request speculation-injector.
+ *
+ * Links are ranked (ML score → position fallback) and only the top-N are
+ * pooled — never every visible result. N comes from PREFETCH_CONFIG
+ * (conservative 3, balanced 6, aggressive 12).
  *
  * @module desktop/prefetch/prefetch-scheduler
  */
@@ -18,9 +18,11 @@
 const { PREFETCH_CONFIG } = require('@glimpse/shared/constants');
 const settings = require('../storage/settings');
 const { logger } = require('../utils/logger');
-const { injectSpeculationRules } = require('./speculation-injector');
+const pool = require('./preload-pool');
 const bandwidthGuard = require('./bandwidth-guard');
 const cacheManager = require('./cache-manager');
+
+const PREFIX = '[glimpse:prefetch]';
 
 /** Lazy-load click-predictor to avoid circular deps at startup */
 let clickPredictor = null;
@@ -37,24 +39,19 @@ function getClickPredictor() {
 
 /* ── State ──────────────────────────────────────────────────────── */
 
-/** Currently visible URLs on the active search results page.
- *  Values include `firstSeenAt` — the timestamp when the link first became
- *  visible, used to enforce `minVisibilityDuration`. */
+/** Currently visible URLs on the active search results page. */
 const visibleUrls = new Map();
 
-/** URLs that have already been prefetched */
-const prefetchedUrls = new Set();
+/** URLs that have already been sent to the pool */
+const pooledUrls = new Set();
 
 /** Current aggressiveness level */
 let aggressiveness = 'balanced';
 
-/** Current max concurrent prefetches */
-let maxConcurrent = PREFETCH_CONFIG.balanced.maxConcurrent;
-
 /** Current engine name for ML predictions */
 let currentEngine = 'google';
 
-/** Reference to the active tab's webContents for injecting rules */
+/** Reference to the active tab's webContents */
 let activeWebContents = null;
 
 /** Reference to the chrome webContents for sending IPC events */
@@ -62,6 +59,9 @@ let chromeWebContents = null;
 
 /** Debounce timer for batching visibility events */
 let prefetchTimer = null;
+
+/** Track click timestamps for MISS render-time measurement */
+const missClickTimestamps = new Map();
 
 /* ── Public API ─────────────────────────────────────────────────── */
 
@@ -82,10 +82,46 @@ function setChromeWebContents(wc) {
  * @param {Electron.WebContents} webContents - The tab's webContents
  */
 function onLinkVisible(url, position, domain, webContents) {
-  /* Store the active webContents reference */
   activeWebContents = webContents;
 
-  /* Only record firstSeenAt once — don't reset on re-entry */
+  if (!visibleUrls.has(url)) {
+    visibleUrls.set(url, {
+      url,
+      position,
+      domain,
+      addedAt: Date.now(),
+      firstSeenAt: Date.now(),
+    });
+
+    /* Eagerly preconnect (DNS + TCP + TLS) to visible domains if preconnectAll is enabled */
+    const preconnectAll = settings.get('preconnectAll', process.env.PREFETCH_PRECONNECT_ALL !== 'false');
+    if (preconnectAll) {
+      try {
+        webContents.session.preconnect({ url, numSockets: 3 });
+      } catch { /* best effort */ }
+    }
+  }
+
+  /* Ultra-short debounce: batch IntersectionObserver bursts but fire ASAP */
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(() => {
+    triggerPrefetch(webContents);
+  }, 10);
+}
+
+/**
+ * Handle user hovering over a search result link (>80ms).
+ * Eagerly preconnects and pools the link with top priority.
+ * @param {string} url
+ * @param {number} position
+ * @param {string} domain
+ * @param {Electron.WebContents} webContents
+ */
+function onLinkHover(url, position, domain, webContents) {
+  const hoverBoostEnabled = settings.get('hoverBoost', process.env.PREFETCH_HOVER_BOOST !== 'false');
+  if (!hoverBoostEnabled || !webContents || webContents.isDestroyed()) return;
+
+  activeWebContents = webContents;
   if (!visibleUrls.has(url)) {
     visibleUrls.set(url, {
       url,
@@ -96,19 +132,30 @@ function onLinkVisible(url, position, domain, webContents) {
     });
   }
 
-  /* Debounce to batch multiple simultaneous visibility events */
-  clearTimeout(prefetchTimer);
-  prefetchTimer = setTimeout(() => {
-    triggerPrefetch(webContents);
-  }, 200);
+  try {
+    webContents.session.preconnect({ url, numSockets: 3 });
+  } catch { /* best effort */ }
+
+  if (!pooledUrls.has(url)) {
+    logger.info(`${PREFIX} hover boost pooling`, { url: url.substring(0, 50), position });
+    pool.addUrl(url, webContents.session, 0);
+    pooledUrls.add(url);
+    notifyChrome('prefetch:completed', { url });
+  }
 }
 
 /**
- * Core prefetch logic — evaluate visibility duration and fire net.request.
+ * Core prefetch logic — rank visible links and pool the top-N.
+ * Never pools every visible result; ranking decides which get preloaded.
  * @param {Electron.WebContents} webContents
  */
 async function triggerPrefetch(webContents) {
   if (!webContents || webContents.isDestroyed()) return;
+
+  logger.info(`${PREFIX} triggerPrefetch called`, {
+    visibleCount: visibleUrls.size,
+    alreadyPooled: pooledUrls.size,
+  });
 
   /* Ensure bandwidth guard has autodetected at least once */
   bandwidthGuard.autoDetectNetwork();
@@ -116,27 +163,31 @@ async function triggerPrefetch(webContents) {
   /* Check bandwidth guard */
   const guard = bandwidthGuard.shouldPrefetch();
   if (!guard.allowed) {
-    logger.debug('Prefetch blocked by bandwidth guard', { reason: guard.reason });
+    logger.info(`${PREFIX} Prefetch blocked by bandwidth guard`, { reason: guard.reason });
     return;
   }
 
   /* Apply suggested aggressiveness override if bandwidth dictates it */
   const effectiveAggressiveness = guard.suggestedAggressiveness || aggressiveness;
   const config = PREFETCH_CONFIG[effectiveAggressiveness];
-  const effectiveMax = config ? config.maxConcurrent : 4;
-  const minVisMs = config ? config.minVisibilityDuration : 800;
+  const effectiveMax = config ? config.maxConcurrent : PREFETCH_CONFIG.balanced.maxConcurrent;
+
+  /* Zero visibility threshold — pool links the INSTANT they're seen.
+   * WebContentsView loading takes 1-3 seconds anyway; every ms of head
+   * start matters for the "click and it's already there" experience. */
+  const minVisMs = 0;
 
   /* Don't exceed concurrent limit */
-  if (prefetchedUrls.size >= effectiveMax) {
+  if (pooledUrls.size >= effectiveMax) {
     return;
   }
 
   const now = Date.now();
 
-  /* Score and rank all pending visible URLs that have been visible long enough */
+  /* Collect all pending visible URLs that have been visible long enough */
   const pendingUrls = [];
   for (const [pendingUrl, info] of visibleUrls) {
-    if (prefetchedUrls.has(pendingUrl) || cacheManager.isPrefetched(pendingUrl)) {
+    if (pooledUrls.has(pendingUrl)) {
       continue;
     }
     /* Enforce minimum visibility duration */
@@ -147,6 +198,11 @@ async function triggerPrefetch(webContents) {
   }
 
   if (pendingUrls.length === 0) {
+    logger.info(`${PREFIX} No URLs ready for pool`, {
+      totalVisible: visibleUrls.size,
+      alreadyPooled: pooledUrls.size,
+      minVisMs,
+    });
     /* Some links may still be below the duration threshold — reschedule */
     const earliestReady = findEarliestReadyTime(minVisMs, now);
     if (earliestReady > 0) {
@@ -156,7 +212,7 @@ async function triggerPrefetch(webContents) {
     return;
   }
 
-  /* Use ML click predictor to rank */
+  /* ── Rank by ML model score, fall back to position order ────── */
   const predictor = getClickPredictor();
   let rankedUrls;
   if (predictor && typeof predictor.rankUrls === 'function') {
@@ -166,47 +222,59 @@ async function triggerPrefetch(webContents) {
     rankedUrls = pendingUrls.sort((a, b) => a.position - b.position);
   }
 
-  /* Select top N URLs to prefetch */
-  const slotsAvailable = effectiveMax - prefetchedUrls.size;
-  const toPrefetch = rankedUrls.slice(0, slotsAvailable).map((l) => l.url);
+  /* Select only the top-N to pool — never all visible results.
+   * Respect stagedConcurrency to prevent network bufferbloat. */
+  const slotsAvailable = effectiveMax - pooledUrls.size;
+  const stagedLimit = settings.get('stagedConcurrency', parseInt(process.env.PREFETCH_STAGED_CONCURRENCY || '2', 10));
+  const maxToPool = Math.min(slotsAvailable, stagedLimit > 0 ? stagedLimit : slotsAvailable);
+  const toPool = rankedUrls.slice(0, maxToPool);
 
-  if (toPrefetch.length === 0) return;
+  if (toPool.length === 0) return;
 
-  /* Prefetch via net.request (populates HTTP cache) */
-  const result = await injectSpeculationRules(webContents, toPrefetch, 'prefetch');
+  logger.info(`${PREFIX} [3] pool load started`, {
+    count: toPool.length,
+    limit: effectiveMax,
+    poolSize: pool.getStats().entries,
+    urls: toPool.map(l => l.url.substring(0, 50)),
+  });
 
-  if (result && result.succeeded && result.succeeded.length > 0) {
-    for (const prefetchUrl of result.succeeded) {
-      prefetchedUrls.add(prefetchUrl);
-      const sizeBytes = (result.bytes && result.bytes[prefetchUrl]) || 0;
-      cacheManager.recordPrefetch(prefetchUrl, sizeBytes);
+  /* Add each URL to the preload pool */
+  const ownerSession = webContents.session;
+  for (const linkInfo of toPool) {
+    pool.addUrl(linkInfo.url, ownerSession, linkInfo.position);
+    pooledUrls.add(linkInfo.url);
 
-      /* Log to SQLite (lazy-load to avoid circular deps) */
-      try {
-        const { logPrefetchEntry } = require('../ipc/prefetch-handlers');
-        logPrefetchEntry(prefetchUrl, 0, 'success');
-      } catch { /* best effort */ }
+    /* Record in cache manager for compatibility */
+    cacheManager.recordPrefetch(linkInfo.url, 0);
 
-      /* Notify the chrome UI */
-      notifyChrome('prefetch:completed', { url: prefetchUrl });
-    }
+    /* Log to SQLite (best effort) */
+    try {
+      const { logPrefetchEntry } = require('../ipc/prefetch-handlers');
+      logPrefetchEntry(linkInfo.url, 0, 'pool-loading');
+    } catch { /* best effort */ }
 
-    logger.info('Prefetch completed', {
-      succeeded: result.succeeded.length,
-      failed: result.failed ? result.failed.length : 0,
-      totalPrefetched: prefetchedUrls.size,
-    });
+    /* Update session tracker */
+    try {
+      const sessionTracker = require('../telemetry/session-tracker');
+      const tabId = webContents._glimpseTabId;
+      if (tabId) {
+        sessionTracker.updateLinkPreload(tabId, linkInfo.url, {
+          preloadState: 'loading',
+          modelScore: linkInfo.score,
+          modelRank: linkInfo.rank,
+        });
+      }
+    } catch { /* best effort */ }
+
+    /* Notify the chrome UI */
+    notifyChrome('prefetch:completed', { url: linkInfo.url });
   }
 
-  /* Log failures */
-  if (result && result.failed && result.failed.length > 0) {
-    for (const failedUrl of result.failed) {
-      try {
-        const { logPrefetchEntry } = require('../ipc/prefetch-handlers');
-        logPrefetchEntry(failedUrl, 0, 'failed');
-      } catch { /* best effort */ }
-    }
-  }
+  logger.info(`${PREFIX} [4] pool updated`, {
+    added: toPool.length,
+    totalPooled: pooledUrls.size,
+    poolStats: pool.getStats(),
+  });
 }
 
 /**
@@ -216,18 +284,17 @@ async function triggerPrefetch(webContents) {
 function findEarliestReadyTime(minVisMs, now) {
   let earliest = Infinity;
   for (const [url, info] of visibleUrls) {
-    if (prefetchedUrls.has(url) || cacheManager.isPrefetched(url)) continue;
+    if (pooledUrls.has(url)) continue;
     const ready = info.firstSeenAt + minVisMs;
     if (ready > now && ready < earliest) {
       earliest = ready;
     }
   }
-  return earliest === Infinity ? 0 : earliest - now + 10; /* +10ms buffer */
+  return earliest === Infinity ? 0 : earliest - now + 10;
 }
 
 /**
  * Called when a result link goes out of view.
- *
  * @param {string} url
  */
 function onLinkHidden(url) {
@@ -236,52 +303,66 @@ function onLinkHidden(url) {
 
 /**
  * Called when the user clicks a search result link.
- *
  * @param {string} url - The clicked URL
  * @param {boolean} fromCache - Whether it was served from the prefetch cache
  */
 function onLinkClicked(url, fromCache) {
   if (fromCache || cacheManager.isPrefetched(url)) {
     cacheManager.recordHit(url);
-    logger.info('Prefetch cache hit', { url });
+    logger.info(`${PREFIX} Prefetch cache hit`, { url });
+  } else {
+    /* Start timing for MISS render measurement */
+    missClickTimestamps.set(url, Date.now());
   }
 
   notifyChrome('prefetch:linkClicked', { url, fromCache });
 }
 
 /**
+ * Called when a navigated page finishes loading (for MISS render-time tracking).
+ * @param {string} url
+ */
+function onPageLoaded(url) {
+  const clickTime = missClickTimestamps.get(url);
+  if (clickTime) {
+    const renderMs = Date.now() - clickTime;
+    pool.recordMiss(renderMs);
+    missClickTimestamps.delete(url);
+    logger.info(`${PREFIX} miss render complete`, { url, renderMs });
+  }
+}
+
+/**
  * Called when the user navigates to a new page.
- * Resets all per-page state.
+ * Resets all per-page state and destroys ALL pool entries.
  */
 function onPageNavigate() {
   visibleUrls.clear();
-  prefetchedUrls.clear();
+  pooledUrls.clear();
+  missClickTimestamps.clear();
   activeWebContents = null;
   clearTimeout(prefetchTimer);
 
-  /* Abort in-flight prefetches and reset state from the previous page */
-  try {
-    const { resetState } = require('./speculation-injector');
-    resetState();
-  } catch { /* best effort */ }
+  /* Destroy all pool entries — search tab is gone */
+  pool.clearAll();
 }
 
 /**
  * Update the aggressiveness level.
- *
  * @param {string} level - 'conservative' | 'balanced' | 'aggressive'
  */
 function setAggressiveness(level) {
   if (PREFETCH_CONFIG[level]) {
     aggressiveness = level;
-    maxConcurrent = PREFETCH_CONFIG[level].maxConcurrent;
-    logger.info('Prefetch aggressiveness changed', { level, maxConcurrent });
+    logger.info(`${PREFIX} Prefetch aggressiveness changed`, {
+      level,
+      maxConcurrent: PREFETCH_CONFIG[level].maxConcurrent,
+    });
   }
 }
 
 /**
  * Set the current engine name for ML predictions.
- *
  * @param {string} engineName
  */
 function setCurrentEngine(engineName) {
@@ -290,17 +371,17 @@ function setCurrentEngine(engineName) {
 
 /**
  * Get current scheduler state for debugging/status display.
- *
  * @returns {object}
  */
 function getState() {
   return {
     visibleCount: visibleUrls.size,
-    prefetchedCount: prefetchedUrls.size,
+    pooledCount: pooledUrls.size,
     aggressiveness,
-    maxConcurrent,
+    maxConcurrent: PREFETCH_CONFIG[aggressiveness]?.maxConcurrent,
     currentEngine,
-    prefetchedUrls: [...prefetchedUrls],
+    poolStats: pool.getStats(),
+    pooledUrls: [...pooledUrls],
   };
 }
 
@@ -322,8 +403,10 @@ function notifyChrome(channel, data) {
 module.exports = {
   setChromeWebContents,
   onLinkVisible,
+  onLinkHover,
   onLinkHidden,
   onLinkClicked,
+  onPageLoaded,
   onPageNavigate,
   setAggressiveness,
   setCurrentEngine,

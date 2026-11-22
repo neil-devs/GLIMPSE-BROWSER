@@ -128,9 +128,15 @@ CREATE TABLE search_events (
   user_id               UUID REFERENCES users(id) ON DELETE SET NULL,
   device_id             UUID REFERENCES user_devices(id) ON DELETE SET NULL,
   session_id            UUID REFERENCES user_sessions(id) ON DELETE SET NULL,
+  install_id            UUID,
+  client_event_id       UUID UNIQUE,
   search_engine         search_engine_enum NOT NULL,
-  query_text            VARCHAR(500) NOT NULL,
-  query_length          SMALLINT NOT NULL GENERATED ALWAYS AS (LENGTH(query_text)) STORED,
+  query_text            VARCHAR(500),
+  query_length          SMALLINT,
+  query_features        JSONB,
+  model_version         VARCHAR(20),
+  app_version           VARCHAR(20),
+  is_synthetic          BOOLEAN NOT NULL DEFAULT FALSE,
   result_count_visible  SMALLINT NOT NULL DEFAULT 0,
   screen_resolution     VARCHAR(20),
   window_width          SMALLINT,
@@ -144,20 +150,31 @@ CREATE TABLE search_events (
 
 CREATE TABLE result_link_events (
   id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  search_event_id       UUID NOT NULL REFERENCES search_events(id) ON DELETE CASCADE,
+  search_event_id       UUID REFERENCES search_events(id) ON DELETE CASCADE,
   user_id               UUID REFERENCES users(id) ON DELETE SET NULL,
-  url                   VARCHAR(2048) NOT NULL,
+  client_event_id       UUID UNIQUE,
+  url                   VARCHAR(2048),
   domain                VARCHAR(255) NOT NULL,
+  tld                   VARCHAR(24),
+  url_depth             SMALLINT,
+  link_text_length      SMALLINT,
   link_position         SMALLINT NOT NULL CHECK (link_position >= 1),
   was_visible_on_load   BOOLEAN NOT NULL DEFAULT FALSE,
+  first_visible_ms      INTEGER,
+  preload_state         VARCHAR(12),
+  model_score           REAL,
+  model_rank            SMALLINT,
   was_prefetched        BOOLEAN NOT NULL DEFAULT FALSE,
   prefetch_started_at   TIMESTAMPTZ,
   prefetch_completed_at TIMESTAMPTZ,
   prefetch_duration_ms  INTEGER,
   was_clicked           BOOLEAN NOT NULL DEFAULT FALSE,
   clicked_at            TIMESTAMPTZ,
+  click_class           VARCHAR(24),
+  ms_to_usable          INTEGER,
   page_load_time_ms     INTEGER,
   cache_hit             BOOLEAN NOT NULL DEFAULT FALSE,
+  is_synthetic          BOOLEAN NOT NULL DEFAULT FALSE,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -293,10 +310,35 @@ CREATE TABLE ml_model_versions (
   auc_roc_score         REAL,
   model_file_path       VARCHAR(1024),
   model_file_size_bytes BIGINT,
+  model_json            JSONB,
+  checksum_sha256       TEXT,
+  metrics               JSONB,
+  config                JSONB,
+  dataset_hash          TEXT,
+  schema_version        SMALLINT DEFAULT 2,
   is_active             BOOLEAN NOT NULL DEFAULT FALSE,
   trained_at            TIMESTAMPTZ,
   deployed_at           TIMESTAMPTZ,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 12b. model_field_stats
+-- ============================================================================
+
+CREATE TABLE model_field_stats (
+  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  install_id          UUID NOT NULL,
+  model_version       VARCHAR(20) NOT NULL,
+  day                 DATE NOT NULL DEFAULT CURRENT_DATE,
+  searches            INTEGER NOT NULL DEFAULT 0,
+  hits_top1           INTEGER NOT NULL DEFAULT 0,
+  hits_top3           INTEGER NOT NULL DEFAULT 0,
+  hits_top6           INTEGER NOT NULL DEFAULT 0,
+  baseline_hits_top3  INTEGER NOT NULL DEFAULT 0,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (install_id, model_version, day)
 );
 
 -- ============================================================================

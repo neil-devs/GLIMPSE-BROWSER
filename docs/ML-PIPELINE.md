@@ -1,248 +1,142 @@
-# Glimpse Browser — ML Pipeline
+# Glimpse Browser — ML Pipeline & Click Predictor (v2.0)
 
 ## Overview
 
-Glimpse uses an on-device machine learning model to predict which search result link a user is most likely to click. This prediction determines prefetch priority — high-probability links are prefetched first, maximizing the chance that the page the user actually clicks is already loaded.
+Glimpse uses an on-device machine learning model to predict which search result link a user is most likely to click. This prediction drives prefetch priority — high-probability links are preloaded into hidden `WebContentsView` slots, ensuring the page the user clicks opens with near-zero latency.
 
-The ML pipeline runs entirely on the server for training, and entirely on the client for inference. No ML libraries are needed at runtime on the client.
+The ML architecture follows a **cloud-train, on-device-infer** pattern:
+- **Cloud (`apps/cloud-api`)**: Trains a Histogram-binned Gradient Boosted Decision Tree (GBDT) using Newton-Raphson second-order leaf updates and L2 regularization. Evaluates ranking metrics (HR@1, HR@3, HR@6, MRR) against position baselines with 95% bootstrap confidence intervals.
+- **Shared (`packages/shared/src/features.js`)**: Single source of truth for the 39-feature schema (`FEATURE_SCHEMA_VERSION = 2`), preventing train/serve feature skew.
+- **Desktop (`apps/desktop`)**: Evaluates flat-array decision trees with zero external npm dependencies. Golden vectors ensure mathematical parity ($|\text{diff}| < 10^{-6}$) before activating any downloaded model.
 
-## Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     CLOUD (Training)                            │
-│                                                                 │
-│  ┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌─────────┐ │
-│  │ Feature      │   │ Model    │   │ Model    │   │ Export  │  │
-│  │ Engineering  │──→│ Training │──→│ Evaluate │──→│ to JSON │  │
-│  └──────────────┘   └──────────┘   └──────────┘   └─────────┘ │
-│         ↑                                              │        │
-│         │ result_link_events                           ↓        │
-│         │ + search_events                     models/latest.json│
-│                                                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                     DESKTOP (Inference)                         │
-│                                                                 │
-│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────┐  │
-│  │ Feature      │   │ Tree         │   │ Prefetch Scheduler │  │
-│  │ Engineering  │──→│ Evaluator    │──→│ (ranked by prob)   │  │
-│  │ (same code)  │   │ (pure JS)    │   │                    │  │
-│  └──────────────┘   └──────────────┘   └────────────────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+## 1. Feature Engineering & Schema Parity
 
-## Feature Engineering
+Both training (`apps/cloud-api`) and desktop inference (`apps/desktop`) import `buildFeatures(ctx, domainStats)` from `@glimpse/shared/features`.
 
-The feature engineer transforms raw link event data into a 14-dimensional numerical vector. The same feature engineering code is used on both server (training) and client (inference) to ensure consistency.
+### 39-Dimensional Feature Vector
 
-### Feature Vector (14 dimensions)
+| Index | Feature Name | Range | Description |
+|---|---|---|---|
+| 0 | `position` | 1..20 | 1-indexed link position on the search result page |
+| 1 | `position_normalized` | [0, 1] | `position / visibleCount` |
+| 2 | `is_top_3` | {0, 1} | Flag indicating whether rank is $\le 3$ |
+| 3 | `visible_on_load` | {0, 1} | Was the link visible within 1,000 ms of page load? |
+| 4–9 | `engine_google`..`engine_yandex` | {0, 1} | One-hot search engine encoding (6 engines) |
+| 10–16 | `tld_com`..`tld_other` | {0, 1} | One-hot TLD class (`com`, `org`, `net`, `edu`, `gov`, `in`, `other`) |
+| 17 | `url_depth` | 0..8 | Slash count in URL path (normalized: depth / 8) |
+| 18 | `link_text_length_bucket` | 0..3 | Bucketed anchor text length ($< 20$, $20..49$, $50..99$, $\ge 100$) |
+| 19 | `query_length_bucket` | 0..3 | Bucketed query length ($< 15$, $15..39$, $40..79$, $\ge 80$) |
+| 20 | `word_count` | 1..8 | Query word count (clamped to 8, normalized) |
+| 21 | `has_digit` | {0, 1} | Does query contain a numeric digit? |
+| 22 | `has_year` | {0, 1} | Does query contain a 4-digit year (1990..2040)? |
+| 23 | `is_question` | {0, 1} | Starts with question word or ends with `?` |
+| 24 | `has_site_operator` | {0, 1} | Contains `site:` filter operator |
+| 25–28 | `script_latin`..`script_other` | {0, 1} | One-hot script classification (`latin`, `cjk`, `cyrillic`, `other`) |
+| 29–34 | `intent_informational`..`intent_news` | {0, 1} | Coarse query intent flags |
+| 35–36 | `window_width_bucket`, `window_height_bucket` | 0..3 | Window resolution classes ($< 1024$, $1024..1439$, $1440..1919$, $\ge 1920$) |
+| 37 | `domain_smoothed_ctr` | [0, 1] | Empirical Bayes smoothed CTR: $\frac{clicks + \alpha}{impressions + \alpha + \beta}$ |
+| 38 | `domain_seen` | {0, 1} | 1 if domain exists in registry or prior sessions, else 0 |
 
-| Index | Feature Name           | Type       | Description                          |
-|-------|------------------------|------------|--------------------------------------|
-| 0     | `link_position_norm`   | Float 0-1  | Position normalized (1=top, 0=bottom)|
-| 1     | `is_top_3`             | Boolean    | Is the link in positions 1-3?        |
-| 2     | `domain_reputation`    | Float 0-1  | Domain trust score from registry     |
-| 3     | `engine_google`        | Boolean    | One-hot: Google                      |
-| 4     | `engine_bing`          | Boolean    | One-hot: Bing                        |
-| 5     | `engine_duckduckgo`    | Boolean    | One-hot: DuckDuckGo                  |
-| 6     | `engine_yahoo`         | Boolean    | One-hot: Yahoo                       |
-| 7     | `engine_baidu`         | Boolean    | One-hot: Baidu                       |
-| 8     | `engine_yandex`        | Boolean    | One-hot: Yandex                      |
-| 9     | `query_length_short`   | Boolean    | One-hot: query < 20 chars            |
-| 10    | `query_length_medium`  | Boolean    | One-hot: 20 ≤ query < 50 chars       |
-| 11    | `query_length_long`    | Boolean    | One-hot: query ≥ 50 chars            |
-| 12    | `was_prefetched`       | Boolean    | Was this link already prefetched?    |
-| 13    | `prefetch_duration_norm`| Float 0-1 | Normalized prefetch time (0-5s→0-1)  |
+> [!IMPORTANT]
+> **Data Leakage Prohibition**: Neither `wasPrefetched`, `prefetchDuration`, nor `clickClass` may ever enter the feature vector. These signals are unknown at decision time.
 
-### Domain Reputation Registry
+---
 
-A curated set of high-trust domains with manually assigned scores:
+## 2. Model Architecture: Flat-Array GBDT
 
-```javascript
-// From packages/shared/src/constants.js
-DOMAIN_REPUTATION: {
-  'wikipedia.org': 1.0,
-  'github.com': 0.95,
-  'developer.mozilla.org': 0.95,
-  'stackoverflow.com': 0.9,
-  'docs.python.org': 0.9,
-  // ... 20+ domains
-  '_default': 0.5,
-}
-```
+### Histogram-Based Split Finding
+- Numerical features are quantized into 64 uniform bins for fast histogram aggregation.
+- Splits optimize standard second-order loss (negative log-likelihood):
+  $$G = \sum r_i, \quad H = \sum p_i (1 - p_i)$$
+  $$\text{Gain} = \frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda}$$
+- Leaf values are regularized via Newton-Raphson update:
+  $$\gamma = -\frac{G}{H + \lambda}$$
+  where $\lambda = 1.0$ (L2 regularization) and learning rate $\eta = 0.1$.
 
-The lookup also handles `www.` prefixes and subdomain stripping (`en.wikipedia.org` → `wikipedia.org`).
-
-## Model: Gradient Boosted Decision Trees
-
-### Why GBDT?
-
-1. **Fast inference**: Walking a tree is O(depth) per tree — microseconds on any device
-2. **Serializable**: Trees serialize to a compact JSON format
-3. **No runtime dependencies**: No numpy, tensorflow, or ML libraries needed on the client
-4. **Interpretable**: Feature importances are directly readable from split frequencies
-5. **Good with small data**: Works well even with only thousands of training samples
-
-### Training Algorithm
-
-The training pipeline implements gradient boosting from scratch using `ml-cart` for individual tree stumps:
-
-```
-Input: X (N × 14 feature matrix), y (N binary labels)
-
-1. Initialize F₀ = log(p / (1-p))           # log-odds of base click rate
-2. For round t = 1 to T:
-   a. Compute probabilities: pᵢ = σ(Fᵢ)     # sigmoid
-   b. Compute residuals: rᵢ = yᵢ - pᵢ       # negative gradient
-   c. Fit tree hₜ to residuals               # ml-cart DecisionTreeClassifier
-   d. Compute leaf values: γ = mean(rᵢ) per leaf
-   e. Update: Fᵢ += η · γ(hₜ(xᵢ))          # learning rate × leaf value
-3. Output: ensemble of T trees + initial prediction + learning rate
-```
-
-### Hyperparameters
-
-| Parameter       | Default | Description                        |
-|----------------|---------|------------------------------------|
-| `nEstimators`  | 100     | Number of boosting rounds (trees)  |
-| `maxDepth`     | 4       | Maximum tree depth                 |
-| `learningRate` | 0.1     | Shrinkage factor per tree          |
-| `threshold`    | 0.5     | Classification threshold           |
-
-### Training Data Requirements
-
-- **Minimum**: 10,000 result_link_events with `was_clicked` not null
-- **Training window**: Last 30 days of data
-- **Max rows**: 100,000 (randomly sampled if more)
-- **Split**: 80% train / 20% test
-
-## Model Evaluation
-
-Metrics computed on the held-out 20% test set:
-
-| Metric     | Description                              | Minimum to Deploy |
-|-----------|------------------------------------------|-------------------|
-| Accuracy  | Overall correct predictions              | 0.70              |
-| Precision | True positives / predicted positives     | Logged, no gate   |
-| Recall    | True positives / actual positives        | Logged, no gate   |
-| F1        | Harmonic mean of precision and recall    | Logged, no gate   |
-| AUC-ROC   | Area under the ROC curve (trapezoidal)   | Logged, no gate   |
-
-A new model is only deployed if `accuracy ≥ 0.70`. Otherwise it's saved as an inactive version for comparison.
-
-## Model Export Format
-
-The trained model is serialized to a portable JSON format (`models/latest.json`):
+### Flat-Array Serialization Format
+Trees serialize to flat parallel typed arrays for microsecond traversal without object allocations:
 
 ```json
 {
-  "version": "1.23456.0",
-  "trainedAt": "2024-01-15T02:00:00.000Z",
-  "modelType": "gradient_boosted_trees",
-  "features": ["link_position_norm", "is_top_3", ...],
-  "featureCount": 14,
-  "hyperparameters": { "nEstimators": 100, "maxDepth": 4, "learningRate": 0.1 },
-  "metrics": { "accuracy": 0.78, "precision": 0.74, ... },
-  "initialPrediction": -0.847,
+  "modelVersion": "v2.0.0",
+  "baseScore": -1.2458,
   "learningRate": 0.1,
-  "threshold": 0.5,
+  "featureSchemaVersion": 2,
+  "featureNames": ["position", "position_normalized", ...],
   "trees": [
     {
-      "round": 0,
-      "leafValues": { "0": -0.15, "1": 0.35 },
-      "root": {
-        "type": "split",
-        "featureIndex": 0,
-        "threshold": 0.667,
-        "left": { "type": "leaf", "prediction": 0 },
-        "right": { "type": "leaf", "prediction": 1 }
-      }
+      "feature": [0, 37, -1, -1, -1],
+      "threshold": [2.5, 0.45, 0, 0, 0],
+      "left": [1, 3, -1, -1, -1],
+      "right": [2, 4, -1, -1, -1],
+      "value": [0, 0, -0.42, 0.81, 0.15]
     }
+  ],
+  "checksumSha256": "4a71...",
+  "goldenVectors": [
+    { "features": [1, 0.1, 1, ...], "expectedScore": 0.724915 }
   ]
 }
 ```
 
-## Client-Side Inference
-
-The desktop app evaluates the model with a tiny pure-JS function:
-
+### Zero-Dependency Inference Engine
 ```javascript
-function predict(model, features) {
-  let score = model.initialPrediction;
-
-  for (const tree of model.trees) {
-    const prediction = walkTree(tree.root, features);
-    const leafValue = tree.leafValues[prediction] || 0;
-    score += model.learningRate * leafValue;
+function evaluateTree(tree, x) {
+  let node = 0;
+  while (tree.feature[node] !== -1) {
+    node = x[tree.feature[node]] <= tree.threshold[node]
+      ? tree.left[node]
+      : tree.right[node];
   }
-
-  return sigmoid(score);
+  return tree.value[node];
 }
 
-function walkTree(node, features) {
-  if (node.type === 'leaf') return node.prediction;
-  return features[node.featureIndex] <= node.threshold
-    ? walkTree(node.left, features)
-    : walkTree(node.right, features);
+function predict(model, x) {
+  let raw = model.baseScore;
+  for (const tree of model.trees) {
+    raw += model.learningRate * evaluateTree(tree, x);
+  }
+  return 1 / (1 + Math.exp(-raw)); // Sigmoid
 }
 ```
 
-**Performance**: Inference takes < 1ms for 100 trees × 14 features on any modern hardware.
+---
 
-## Retraining Pipeline
+## 3. Evaluation & Automated Promotion Gate
 
-The model is automatically retrained every **Sunday at 02:00 UTC** via a cron job:
+A newly trained candidate model is never promoted automatically unless it satisfies four strict statistical gates:
 
-```
-1. Fetch 30 days of result_link_events (with search_events join)
-2. Require ≥ 10,000 rows to proceed
-3. Build feature matrix (14 features)
-4. Split 80/20 train/test
-5. Train 100-tree GBDT ensemble
-6. Evaluate on test set
-7. If accuracy ≥ 0.70:
-   a. Export to models/latest.json
-   b. Deactivate current model in DB
-   c. Insert new model version as active
-8. If accuracy < 0.70:
-   a. Save model version as inactive (for comparison)
-   b. Keep current active model unchanged
-```
+1. **HR@3 vs Position Baseline**: Candidate model must beat the position-order baseline on top-3 hit rate by $\ge +0.02$ (+2.0%).
+2. **Positive Bootstrap Confidence Interval**: The 95% bootstrap CI lower bound of $(\text{HR@3}_{\text{model}} - \text{HR@3}_{\text{baseline}})$ must exceed $0$ across 1,000 bootstrap resamples.
+3. **No Metric Regression**: $\text{AUC-ROC}_{\text{new}} \ge \text{AUC-ROC}_{\text{active}} - 0.01$ and $\text{LogLoss}_{\text{new}} \le \text{LogLoss}_{\text{active}} + 0.02$.
+4. **Golden Vector Parity**: Serialized model must match cloud predictions on all golden test vectors to within $10^{-6}$.
 
-## Accuracy Feedback Loop
+If the promotion gate fails, training completes with status `rejected`, preserving the currently active production model.
 
-The desktop client reports real-world prediction accuracy back to the server:
+---
+
+## 4. Desktop Model Loader & Resilient Fallback
+
+`apps/desktop/src/main/ml/model-loader.js` guarantees prefetch ranking is always operational:
 
 ```
-Desktop:                              Cloud API:
-  ML model predicts URLs  ───────────→  POST /model/report-accuracy
-  User clicks a link      ───────────→  { predictedUrls, actualClickedUrl,
-  Compare prediction                      predictionCorrect, inferenceTimeMs }
-  vs actual click                            ↓
-                                        Stored in ml_predictions_log
-                                             ↓
-                                        Used in next retraining cycle
+┌────────────────────────────────────────────────────────┐
+│ 1. Download candidate from GET /model/latest           │
+│    Validate canonical SHA256 checksum                  │
+│    Validate |predict(v) - expected| < 1e-6             │
+├────────────────────────────────────────────────────────┤
+│ 2. If valid: atomically write to local cache           │
+│    (active-model.json)                                 │
+├────────────────────────────────────────────────────────┤
+│ 3. If remote fails or invalid:                         │
+│    Load previous cached model from local disk          │
+├────────────────────────────────────────────────────────┤
+│ 4. If local disk corrupted:                            │
+│    Load bundled resources/default-model.json (v2.0.0)  │
+├────────────────────────────────────────────────────────┤
+│ 5. If bundled model fails:                             │
+│    Pure deterministic position sorting (1, 2, 3...)    │
+└────────────────────────────────────────────────────────┘
 ```
-
-This closes the feedback loop: real user behavior improves future models.
-
-## Model Version History
-
-Every trained model (whether deployed or not) is recorded in `ml_model_versions`:
-
-| Field                 | Description                              |
-|----------------------|------------------------------------------|
-| `version_string`     | Semantic version (e.g. "1.23456.0")      |
-| `training_data_count`| Number of rows used for training         |
-| `accuracy_score`     | Accuracy on test set                     |
-| `precision_score`    | Precision on test set                    |
-| `recall_score`       | Recall on test set                       |
-| `f1_score`           | F1 score on test set                     |
-| `auc_roc_score`      | AUC-ROC on test set                      |
-| `is_active`          | Whether this is the currently deployed model |
-| `model_file_path`    | Path to the JSON file                    |
-| `trained_at`         | When training completed                  |
-| `deployed_at`        | When the model was activated (null if not)|
-
-The client can list all versions via `GET /api/v1/model/versions` and download the active model via `GET /api/v1/model/download`.

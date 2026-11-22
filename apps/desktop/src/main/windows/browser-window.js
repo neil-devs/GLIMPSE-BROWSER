@@ -47,7 +47,7 @@ function createMainWindow(options = {}) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(app.getAppPath(), 'out', 'preload', 'index.js'),
+      preload: path.join(__dirname, '..', 'preload', 'index.js'),
     },
   });
 
@@ -75,7 +75,7 @@ function createMainWindow(options = {}) {
     chromeView.webContents.loadURL(options.rendererUrl);
   } else {
     /* Production: load from built files */
-    const indexPath = path.join(app.getAppPath(), 'out', 'renderer', 'index.html');
+    const indexPath = path.join(__dirname, '..', 'renderer', 'index.html');
     chromeView.webContents.loadFile(indexPath);
   }
 

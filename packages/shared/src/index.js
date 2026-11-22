@@ -11,10 +11,14 @@ const constants = require('./constants');
 const ipcTypes = require('./ipc-types');
 const validators = require('./validators');
 const errors = require('./errors');
+const features = require('./features');
+const queryFeatures = require('./queryFeatures');
 
 module.exports = {
   ...constants,
   ...ipcTypes,
   ...validators,
   ...errors,
+  ...features,
+  ...queryFeatures,
 };

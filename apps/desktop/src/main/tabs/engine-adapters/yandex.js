@@ -31,4 +31,6 @@ module.exports = Object.freeze({
       return null;
     }
   },
+
+  resolveDestination(href) { return href; },
 });

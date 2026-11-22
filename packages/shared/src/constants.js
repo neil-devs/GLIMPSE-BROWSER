@@ -59,19 +59,19 @@ const PREFETCH_AGGRESSIVENESS_LEVELS = Object.freeze([
 /** Prefetch config per aggressiveness level */
 const PREFETCH_CONFIG = Object.freeze({
   conservative: {
-    maxConcurrent: 2,
+    maxConcurrent: 3,
     minVisibilityDuration: 1500,
     bandwidthThresholdMbps: 5,
     maxCacheSizeMb: 200,
   },
   balanced: {
-    maxConcurrent: 4,
+    maxConcurrent: 6,
     minVisibilityDuration: 800,
     bandwidthThresholdMbps: 2,
     maxCacheSizeMb: 500,
   },
   aggressive: {
-    maxConcurrent: 6,
+    maxConcurrent: 12,
     minVisibilityDuration: 300,
     bandwidthThresholdMbps: 0.5,
     maxCacheSizeMb: 1000,
@@ -104,6 +104,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   prefetchEnabled: true,
   prefetchAggressiveness: 'balanced',
   prefetchOnMeteredNetwork: false,
+  /* Phase 11 Flags */
+  preconnectAll: true,
+  hoverBoost: true,
+  stagedConcurrency: 2,
+  readyMode: 'usable',
+  poolSize: 6,
+  throttleAfterReady: true,
   theme: 'system',
   language: 'en',
   historyRetentionDays: 90,

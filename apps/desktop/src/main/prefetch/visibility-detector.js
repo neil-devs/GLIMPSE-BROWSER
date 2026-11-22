@@ -31,6 +31,7 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
   var SELECTOR = ${JSON.stringify(resultLinkSelector)};
   var OBSERVED = new Set();
   var VISIBLE_URLS = new Map();
+  var PAGE_START = performance.now();
 
   /**
    * Extract the real destination URL from a search result link.
@@ -45,9 +46,18 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
 
     try {
       var parsed = new URL(href);
-      /* Google redirect: /url?q=<real_url> */
-      if (parsed.pathname === '/url' && parsed.searchParams.has('q')) {
-        return parsed.searchParams.get('q');
+      /* Google redirect: /url?q=<real_url> or /url?url=<real_url> */
+      if (parsed.hostname.indexOf('google.') !== -1 && parsed.pathname === '/url') {
+        var realUrl = parsed.searchParams.get('q') || parsed.searchParams.get('url');
+        if (realUrl && realUrl.startsWith('http')) return realUrl;
+      }
+      /* Google /goto redirect (new encrypted format) — pass through as-is */
+      if (parsed.hostname.indexOf('google.') !== -1 && parsed.pathname === '/goto') {
+        return href;
+      }
+      /* Skip other google.* internal links (search, images, maps, etc.) */
+      if (parsed.hostname.indexOf('google.') !== -1 && parsed.pathname !== '/url') {
+        return null;
       }
       /* Bing redirect: check for 'u' param */
       if (parsed.searchParams.has('u')) {
@@ -79,7 +89,7 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
    */
   function getDomain(url) {
     try {
-      return new URL(url).hostname.replace(/^www\\\\./, '');
+      return new URL(url).hostname.replace(/^www\\./, '');
     } catch(e) {
       return 'unknown';
     }
@@ -148,8 +158,19 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
 
         if (entry.isIntersecting) {
           if (!VISIBLE_URLS.has(url)) {
+            var nowMs = Math.round(performance.now() - PAGE_START);
+            var visibleOnLoad = nowMs < 1000;
+            var textLen = (anchor.textContent || '').trim().length;
+
             VISIBLE_URLS.set(url, { position: position, domain: domain, visibleSince: Date.now() });
-            sendToMain('link-visible', { url: url, position: position, domain: domain });
+            sendToMain('link-visible', {
+              url: url,
+              position: position,
+              domain: domain,
+              linkTextLength: textLen,
+              firstVisibleMs: nowMs,
+              visibleOnLoad: visibleOnLoad,
+            });
           }
         } else {
           if (VISIBLE_URLS.has(url)) {
@@ -178,7 +199,7 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
       newCount++;
     }
     if (newCount > 0) {
-      console.log('[Glimpse] Observing ' + links.length + ' result links');
+      console.log('[Glimpse] Observing ' + links.length + ' result links (' + newCount + ' new)');
     }
   }
 
@@ -194,6 +215,37 @@ function buildVisibilityDetectorScript(resultLinkSelector) {
     childList: true,
     subtree: true,
   });
+
+  /* ── Hover boost tracking (>80ms dwell) ──────────────────── */
+
+  var hoverTimer = null;
+  var hoveredUrl = null;
+
+  document.addEventListener('mouseover', function(event) {
+    var anchor = event.target.closest('a');
+    if (!anchor) return;
+
+    var url = getRealUrl(anchor);
+    if (!url || !url.startsWith('http')) return;
+
+    if (hoveredUrl === url) return;
+    hoveredUrl = url;
+
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(function() {
+      var domain = getDomain(url);
+      var position = getPosition(anchor);
+      sendToMain('link-hover', { url: url, position: position, domain: domain });
+    }, 80);
+  }, true);
+
+  document.addEventListener('mouseout', function(event) {
+    var anchor = event.target.closest('a');
+    if (anchor) {
+      clearTimeout(hoverTimer);
+      hoveredUrl = null;
+    }
+  }, true);
 
   /* ── Click tracking ────────────────────────────────────────── */
 

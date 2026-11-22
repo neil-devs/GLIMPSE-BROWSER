@@ -25,7 +25,7 @@ const tabState = require('./tabs/tab-state');
 const prefetchScheduler = require('./prefetch/prefetch-scheduler');
 const cacheManager = require('./prefetch/cache-manager');
 const modelLoader = require('./ml/model-loader');
-const telemetryClient = require('./sync/sync-client');
+const telemetryClient = require('./telemetry/telemetry-client');
 
 /* ── Error Handlers ─────────────────────────────────────────────── */
 

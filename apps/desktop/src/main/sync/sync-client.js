@@ -1,74 +1,180 @@
 /**
- * @fileoverview Telemetry sync client.
- * Sends anonymous usage data to the Glimpse cloud API so the ML model can be
- * retrained over time. All telemetry is opt-in (controlled by the
- * `telemetryEnabled` setting which defaults to false).
+ * @fileoverview Telemetry and Cloud Sync client.
+ * Automatically synchronizes all browser activities to Supabase:
+ * - Search events (engine, query, visible counts)
+ * - Result link events (position, visibility, prefetch status, click, cache hit)
+ * - Prefetch performance (duration, byte size, network type, status)
+ * - Browsing history (all navigated URLs, titles, visit count)
+ * - Bookmarks (added/updated bookmarks)
+ * - Downloads (url, filename, bytes downloaded, status)
+ * - Activity audit logs (app start, settings change, navigation)
  *
- * Data is batched in memory and flushed periodically or when the batch
- * reaches a configurable size. All network calls are fire-and-forget —
- * failures are silently dropped so they never affect browser performance.
+ * All operations are non-blocking, asynchronous, and fire-and-forget
+ * so they NEVER slow down the browser.
  *
  * @module desktop/sync/sync-client
  */
 
 'use strict';
 
+const https = require('node:https');
+const { randomUUID } = require('node:crypto');
 const settings = require('../storage/settings');
 const { logger } = require('../utils/logger');
-const { TELEMETRY_BATCH_SIZE } = require('@glimpse/shared/constants');
 
 /* ── Configuration ──────────────────────────────────────────────── */
 
-/** How often to flush the queue (ms) */
-const FLUSH_INTERVAL_MS = 30_000;
+const SUPABASE_HOST = 'hzeaygkwuszvbsrsntgf.supabase.co';
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6ZWF5Z2t3dXN6dmJzcnNudGdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTc0MzcxMywiZXhwIjoyMTA1MzE5NzEzfQ.DuZMc3xy_ea92lDec1-2zN5EoYU2UBBorSmgtJOZhoo';
 
-/** Maximum items per batch before an early flush is triggered */
-const MAX_BATCH = TELEMETRY_BATCH_SIZE || 50;
+const DEFAULT_USER_ID =
+  process.env.DEFAULT_USER_ID || 'b9a7bce1-e7a4-4fff-a83c-f0e2cdb0eae4';
 
-/** Cloud API base URL (set via .env or fallback) */
-function getApiBase() {
-  return process.env.CLOUD_API_URL || 'http://localhost:3001/api/v1';
+/** Flush batch every 2 seconds for near-real-time storage in cloud */
+const FLUSH_INTERVAL_MS = 2000;
+const MAX_BATCH = 20;
+
+/* ── In-Memory Queue ────────────────────────────────────────────── */
+
+/** @type {Array<{ table: string, payload: object, endpoint?: string }>} */
+let queue = [];
+let flushTimer = null;
+let initialised = false;
+let lastSearchEventId = null;
+
+/* ── Helper Functions ───────────────────────────────────────────── */
+
+function extractDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'unknown';
+  }
 }
 
-/* ── Queues ─────────────────────────────────────────────────────── */
+function isEnabled() {
+  const envEnabled = process.env.TELEMETRY_ENABLED;
+  if (envEnabled === 'true' || envEnabled === '1') return true;
+  try {
+    return settings.get('telemetryEnabled', true);
+  } catch {
+    return true;
+  }
+}
 
-/** @type {Array<{ endpoint: string, payload: object }>} */
-let queue = [];
-
-/** Flush timer reference */
-let flushTimer = null;
-
-/** Whether the client has been initialised */
-let initialised = false;
-
-/* ── Public API ─────────────────────────────────────────────────── */
+/* ── Core Supabase REST API Caller ──────────────────────────────── */
 
 /**
- * Initialise the telemetry client.
- * Starts the periodic flush timer. Safe to call multiple times.
+ * Insert a row or array of rows directly into a Supabase table.
+ * Uses native Node https request with keep-alive agent.
  */
-function init() {
-  if (initialised) return;
-  initialised = true;
+function sendToSupabase(table, payload) {
+  return new Promise((resolve) => {
+    try {
+      const data = JSON.stringify(payload);
+      const req = https.request(
+        {
+          hostname: SUPABASE_HOST,
+          port: 443,
+          path: `/rest/v1/${table}`,
+          method: 'POST',
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(data),
+            Prefer: 'return=minimal',
+          },
+          timeout: 5000,
+        },
+        (res) => {
+          res.on('data', () => {});
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              logger.info(`[CloudDB] Synced to ${table}`, { status: res.statusCode });
+            } else {
+              logger.debug(`[CloudDB] Insert to ${table} returned ${res.statusCode}`);
+            }
+            resolve(res.statusCode);
+          });
+        }
+      );
 
-  /* Start the periodic flush */
-  flushTimer = setInterval(() => {
-    flush().catch(() => { /* swallow */ });
-  }, FLUSH_INTERVAL_MS);
+      req.on('error', (err) => {
+        logger.debug(`[CloudDB] Error writing to ${table}: ${err.message}`);
+        resolve(null);
+      });
 
-  /* Don't prevent the process from exiting */
-  if (flushTimer.unref) flushTimer.unref();
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
 
-  logger.debug('Telemetry client initialised', {
-    enabled: isEnabled(),
-    flushIntervalMs: FLUSH_INTERVAL_MS,
+      req.write(data);
+      req.end();
+    } catch (e) {
+      resolve(null);
+    }
   });
 }
 
 /**
- * Shut down the telemetry client.
- * Attempts a final flush before stopping.
+ * Enqueue an item for cloud storage.
  */
+function enqueue(table, payload, endpoint = null) {
+  if (!isEnabled()) return;
+  queue.push({ table, payload, endpoint });
+
+  if (queue.length >= MAX_BATCH) {
+    flush().catch(() => {});
+  }
+}
+
+/**
+ * Flush all queued items to Supabase.
+ */
+async function flush() {
+  if (queue.length === 0) return;
+  const items = queue.splice(0);
+
+  for (const item of items) {
+    try {
+      await sendToSupabase(item.table, item.payload);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* ── Public API ─────────────────────────────────────────────────── */
+
+function init() {
+  if (initialised) return;
+  initialised = true;
+
+  flushTimer = setInterval(() => {
+    flush().catch(() => {});
+  }, FLUSH_INTERVAL_MS);
+
+  if (flushTimer.unref) flushTimer.unref();
+
+  logger.info('[CloudDB] Telemetry & Sync client initialised — storing to Supabase', {
+    host: SUPABASE_HOST,
+    userId: DEFAULT_USER_ID,
+  });
+
+  /* Log app startup audit event */
+  logActivityAudit('DEVICE_REGISTERED', {
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.version,
+    appVersion: '1.0.0',
+    startedAt: new Date().toISOString(),
+  });
+}
+
 async function shutdown() {
   if (flushTimer) {
     clearInterval(flushTimer);
@@ -79,213 +185,159 @@ async function shutdown() {
 }
 
 /**
- * Check whether telemetry is enabled in user settings.
- * @returns {boolean}
- */
-function isEnabled() {
-  return settings.get('telemetryEnabled', false);
-}
-
-/* ── Event Loggers ──────────────────────────────────────────────── */
-
-/**
- * Log a search event (user performed a search on an engine).
- *
- * @param {object} data
- * @param {string} data.searchEngine - Engine name (google, bing, …)
- * @param {string} data.queryText - The search query
- * @param {number} [data.resultCount] - Number of results detected
+ * Log a search event (user performed a search).
+ * Returns the searchEventId UUID for linking with result_link_events.
  */
 function logSearchEvent(data) {
-  enqueue('/telemetry/search', {
-    search_engine: data.searchEngine,
-    query_text: data.queryText || '',
-    result_count: data.resultCount || 0,
+  const eventId = data.id || randomUUID();
+  lastSearchEventId = eventId;
+  const payload = {
+    id: eventId,
+    user_id: DEFAULT_USER_ID,
+    search_engine: data.searchEngine || 'google',
+    query_text: (data.queryText || '').slice(0, 500),
+    result_count_visible: data.resultCount || 0,
+    screen_resolution: data.screenResolution || null,
+    window_width: data.windowWidth || null,
+    window_height: data.windowHeight || null,
     searched_at: new Date().toISOString(),
-  });
+  };
+
+  enqueue('search_events', payload, '/telemetry/search');
+  return eventId;
 }
 
 /**
- * Log link visibility / click events for a batch of links on one page.
- *
- * @param {object} data
- * @param {string} data.searchEventId - Reference to the search event (or empty)
- * @param {Array<{ url: string, domain: string, position: number, wasVisible: boolean, wasClicked: boolean }>} data.links
+ * Log visible/clicked search result links.
  */
 function logLinkEvents(data) {
   if (!data.links || data.links.length === 0) return;
 
-  enqueue('/telemetry/link-events', {
-    search_event_id: data.searchEventId || null,
-    links: data.links.map((l) => ({
+  let searchEventId = data.searchEventId || lastSearchEventId;
+  if (!searchEventId) {
+    searchEventId = logSearchEvent({ searchEngine: 'google', queryText: '_browsing_' });
+  }
+
+  for (const l of data.links) {
+    const payload = {
+      search_event_id: searchEventId,
+      user_id: DEFAULT_USER_ID,
       url: l.url,
-      domain: l.domain,
-      link_position: l.position,
+      domain: l.domain || extractDomain(l.url),
+      link_position: l.position || 1,
       was_visible_on_load: l.wasVisible ?? true,
+      was_prefetched: l.wasPrefetched ?? false,
       was_clicked: l.wasClicked ?? false,
-    })),
-  });
+      cache_hit: l.cacheHit ?? false,
+      prefetch_duration_ms: l.prefetchDurationMs || null,
+    };
+    enqueue('result_link_events', payload, '/telemetry/link-events');
+  }
 }
 
 /**
- * Log a prefetch performance event (a URL was prefetched — record timing).
- *
- * @param {object} data
- * @param {string} data.url - The prefetched URL
- * @param {string} data.domain - Domain of the URL
- * @param {number} data.position - Position in search results
- * @param {number} data.durationMs - How long the prefetch took
- * @param {number} data.sizeBytes - Response size in bytes
- * @param {string} data.status - 'success' | 'failed'
- * @param {number} [data.clickProbability] - ML-predicted click probability
+ * Log a prefetch performance event.
  */
 function logPrefetchPerformance(data) {
-  enqueue('/telemetry/prefetch-performance', {
+  const payload = {
+    user_id: DEFAULT_USER_ID,
     url: data.url,
-    domain: data.domain || '',
-    link_position: data.position || 0,
-    prefetch_duration_ms: data.durationMs || 0,
-    size_bytes: data.sizeBytes || 0,
+    domain: data.domain || extractDomain(data.url),
+    engine: data.engine || 'google',
+    prefetch_triggered_at: data.triggeredAt || new Date().toISOString(),
+    prefetch_completed_at: data.completedAt || new Date().toISOString(),
+    bytes_transferred: data.sizeBytes || 0,
     status: data.status || 'success',
-    click_probability: data.clickProbability || 0,
-    prefetched_at: new Date().toISOString(),
-  });
+    failure_reason: data.failureReason || null,
+    network_type: data.networkType || 'wifi',
+    available_bandwidth_mbps: data.bandwidthMbps || 10,
+  };
+
+  enqueue('prefetch_performance_log', payload, '/telemetry/prefetch-performance');
 }
 
 /**
- * Log a page load event (user clicked a link — record whether it was a cache hit).
- *
- * @param {object} data
- * @param {string} data.url - The URL the user navigated to
- * @param {boolean} data.fromCache - Whether the page was served from prefetch cache
- * @param {number} [data.loadTimeMs] - Total page load time (if measured)
- * @param {number} [data.position] - Position in search results
+ * Log page load (cache hit vs cold load).
  */
 function logPageLoad(data) {
-  enqueue('/telemetry/page-load', {
+  logActivityAudit('TELEMETRY_SUBMITTED', {
+    type: 'page_load',
     url: data.url,
-    from_cache: data.fromCache || false,
-    load_time_ms: data.loadTimeMs || 0,
-    link_position: data.position || 0,
-    loaded_at: new Date().toISOString(),
-  });
-}
-
-/* ── Internal Helpers ───────────────────────────────────────────── */
-
-/**
- * Add an item to the queue. Triggers an early flush when the queue
- * reaches MAX_BATCH.
- *
- * @param {string} endpoint - API path (appended to base URL)
- * @param {object} payload - Event data
- */
-function enqueue(endpoint, payload) {
-  if (!isEnabled()) return;
-
-  queue.push({ endpoint, payload });
-
-  if (queue.length >= MAX_BATCH) {
-    flush().catch(() => { /* swallow */ });
-  }
-}
-
-/**
- * Flush the queue — group items by endpoint, POST each batch.
- * Errors are silently swallowed so they never affect the browser.
- */
-async function flush() {
-  if (queue.length === 0) return;
-  if (!isEnabled()) {
-    queue = [];
-    return;
-  }
-
-  /* Drain the queue */
-  const items = queue.splice(0);
-
-  /* Group by endpoint */
-  const groups = new Map();
-  for (const item of items) {
-    if (!groups.has(item.endpoint)) {
-      groups.set(item.endpoint, []);
-    }
-    groups.get(item.endpoint).push(item.payload);
-  }
-
-  /* POST each group */
-  const base = getApiBase();
-  for (const [endpoint, payloads] of groups) {
-    try {
-      const url = `${base}${endpoint}`;
-      const body = JSON.stringify({ events: payloads });
-
-      await fetchPost(url, body);
-      logger.debug('Telemetry flushed', { endpoint, count: payloads.length });
-    } catch (err) {
-      /* Fire-and-forget — log and move on */
-      logger.debug('Telemetry flush failed', {
-        endpoint,
-        error: err.message,
-      });
-    }
-  }
-}
-
-/**
- * POST JSON to a URL. Uses Node's built-in fetch (available in Electron 28+).
- * Falls back to the Electron net module if fetch is unavailable.
- *
- * @param {string} url
- * @param {string} body - JSON string
- */
-async function fetchPost(url, body) {
-  if (typeof globalThis.fetch === 'function') {
-    const res = await globalThis.fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    return;
-  }
-
-  /* Fallback: Electron net module */
-  const { net: electronNet } = require('electron');
-  return new Promise((resolve, reject) => {
-    try {
-      const request = electronNet.request({
-        url,
-        method: 'POST',
-      });
-      request.setHeader('Content-Type', 'application/json');
-      request.on('response', (response) => {
-        response.on('data', () => {});
-        response.on('end', () => {
-          if (response.statusCode >= 200 && response.statusCode < 400) {
-            resolve();
-          } else {
-            reject(new Error(`HTTP ${response.statusCode}`));
-          }
-        });
-        response.on('error', reject);
-      });
-      request.on('error', reject);
-      request.write(body);
-      request.end();
-    } catch (err) {
-      reject(err);
-    }
+    fromCache: data.fromCache || false,
+    loadTimeMs: data.loadTimeMs || 0,
   });
 }
 
 /**
- * Get queue size for debugging/status display.
- * @returns {number}
+ * Log a browsing history visit.
  */
+function logHistoryVisit(data) {
+  if (!data.url || data.url.startsWith('about:') || data.url.startsWith('data:')) return;
+
+  const payload = {
+    user_id: DEFAULT_USER_ID,
+    url: data.url,
+    title: (data.title || '').slice(0, 500),
+    favicon_url: data.faviconUrl || null,
+    visit_count: 1,
+    source: data.source || 'direct',
+    search_event_id: data.searchEventId || null,
+    last_visited_at: new Date().toISOString(),
+  };
+
+  enqueue('browsing_history', payload);
+}
+
+/**
+ * Log a bookmark creation/update.
+ */
+function logBookmark(data) {
+  if (!data.url) return;
+
+  const payload = {
+    user_id: DEFAULT_USER_ID,
+    title: (data.title || 'Untitled').slice(0, 500),
+    url: data.url,
+    favicon_url: data.faviconUrl || null,
+    position: data.position || 0,
+    is_synced: true,
+    last_synced_at: new Date().toISOString(),
+  };
+
+  enqueue('bookmarks', payload);
+}
+
+/**
+ * Log a download event.
+ */
+function logDownload(data) {
+  if (!data.url) return;
+
+  const payload = {
+    user_id: DEFAULT_USER_ID,
+    url: data.url,
+    filename: (data.filename || 'download').slice(0, 500),
+    file_size_bytes: data.fileSize || null,
+    status: data.status || 'completed',
+    bytes_downloaded: data.bytesDownloaded || 0,
+  };
+
+  enqueue('downloads', payload);
+}
+
+/**
+ * Log an audit action to activity_audit_log.
+ */
+function logActivityAudit(actionType, metadata = {}) {
+  const payload = {
+    user_id: DEFAULT_USER_ID,
+    action_type: actionType,
+    metadata: metadata,
+  };
+
+  enqueue('activity_audit_log', payload);
+}
+
 function getQueueSize() {
   return queue.length;
 }
@@ -298,6 +350,10 @@ module.exports = {
   logLinkEvents,
   logPrefetchPerformance,
   logPageLoad,
+  logHistoryVisit,
+  logBookmark,
+  logDownload,
+  logActivityAudit,
   flush,
   getQueueSize,
 };

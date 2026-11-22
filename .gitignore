@@ -48,4 +48,8 @@ release/
 
 # ── ML Models (keep latest.json as seed, ignore trained models) ─
 apps/cloud-api/src/ml/models/*.json
+
+# ── Scratch / Temp ────────────────────────────────────────────────
+scratch/
+apps/desktop/resources/test.txt
 !apps/cloud-api/src/ml/models/latest.json

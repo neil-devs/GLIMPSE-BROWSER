@@ -79,7 +79,15 @@ function prepareStatements() {
 function addDownload(url, filename, savePath, fileSize = null, mimeType = null) {
   const s = prepareStatements();
   const info = s.insert.run(url, filename, savePath, fileSize, mimeType);
-  return s.getById.get(info.lastInsertRowid);
+  const created = s.getById.get(info.lastInsertRowid);
+
+  /* Sync to Cloud DB */
+  try {
+    const { logDownload } = require('../sync/sync-client');
+    logDownload({ url, filename, fileSize, status: 'pending' });
+  } catch { /* best effort */ }
+
+  return created;
 }
 
 /**
@@ -101,6 +109,21 @@ function updateProgress(id, bytesDownloaded, speed = 0) {
 function completeDownload(id, finalBytes = null) {
   const s = prepareStatements();
   s.complete.run(finalBytes, id);
+
+  /* Sync to Cloud DB */
+  try {
+    const record = s.getById.get(id);
+    if (record) {
+      const { logDownload } = require('../sync/sync-client');
+      logDownload({
+        url: record.url,
+        filename: record.filename,
+        fileSize: record.file_size_bytes,
+        status: 'completed',
+        bytesDownloaded: finalBytes || record.bytes_downloaded,
+      });
+    }
+  } catch { /* best effort */ }
 }
 
 /**

@@ -20,6 +20,7 @@ const authRoutes = require('./routes/auth');
 const syncRoutes = require('./routes/sync');
 const telemetryRoutes = require('./routes/telemetry');
 const modelRoutes = require('./routes/model');
+const adminRoutes = require('./routes/admin');
 
 /**
  * Create and configure the Express application.
@@ -108,11 +109,15 @@ function createApp() {
   const prefix = `/api/${API_VERSION}`;
 
   app.use('/health', healthRoutes);
+  app.use('/telemetry', telemetryRoutes);
+  app.use('/admin', adminRoutes);
+  app.use('/model', modelRoutes);
   app.use(`${prefix}/health`, healthRoutes);
   app.use(`${prefix}/auth`, authRoutes);
   app.use(`${prefix}/sync`, syncRoutes);
   app.use(`${prefix}/telemetry`, telemetryRoutes);
   app.use(`${prefix}/model`, modelRoutes);
+  app.use(`${prefix}/admin`, adminRoutes);
 
   /* Root endpoint */
   app.get('/', (req, res) => {

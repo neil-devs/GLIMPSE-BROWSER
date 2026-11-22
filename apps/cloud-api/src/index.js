@@ -9,6 +9,8 @@
 'use strict';
 
 /* Load environment variables from .env file (development only) */
+const path = require('node:path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 require('dotenv').config();
 
 const { createApp } = require('./app');

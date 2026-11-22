@@ -8,7 +8,9 @@
     "./constants": "./src/constants.js",
     "./ipc-types": "./src/ipc-types.js",
     "./validators": "./src/validators.js",
-    "./errors": "./src/errors.js"
+    "./errors": "./src/errors.js",
+    "./features": "./src/features.js",
+    "./queryFeatures": "./src/queryFeatures.js"
   },
   "files": [
     "src/"

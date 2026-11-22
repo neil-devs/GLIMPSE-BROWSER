@@ -97,7 +97,15 @@ function add(url, title, folderId = null, position = undefined, faviconUrl = nul
   }
 
   const info = s.insertBookmark.run(url, title, faviconUrl, folderId, position);
-  return s.getBookmarkById.get(info.lastInsertRowid);
+  const created = s.getBookmarkById.get(info.lastInsertRowid);
+
+  /* Sync to Cloud DB */
+  try {
+    const { logBookmark } = require('../sync/sync-client');
+    logBookmark({ url, title, faviconUrl, position });
+  } catch { /* best effort */ }
+
+  return created;
 }
 
 /**

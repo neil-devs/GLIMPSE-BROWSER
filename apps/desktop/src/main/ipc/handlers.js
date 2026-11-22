@@ -266,6 +266,31 @@ function registerAllHandlers(deps = {}) {
   registerStorageHandlers();
   registerPrefetchHandlers(deps.cacheManager);
   registerDownloadsHandlers(deps.windowManager);
+
+  /* ── Telemetry IPC Handlers ──────────────────────────────── */
+  const telemetryClient = require('../telemetry/telemetry-client');
+
+  ipcMain.handle('telemetry:getConsent', () => {
+    return telemetryClient.getConsent();
+  });
+
+  ipcMain.handle('telemetry:setConsent', (_event, status) => {
+    telemetryClient.setConsent(status);
+    return { success: true, consent: status };
+  });
+
+  ipcMain.handle('telemetry:hasConsent', () => {
+    return telemetryClient.hasConsent();
+  });
+
+  ipcMain.handle('telemetry:getInstallId', () => {
+    return telemetryClient.getInstallId();
+  });
+
+  ipcMain.handle('telemetry:deleteData', async () => {
+    const success = await telemetryClient.deleteMyTelemetryData();
+    return { success };
+  });
 }
 
 /**

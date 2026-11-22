@@ -81,14 +81,14 @@ async function injectSpeculationRules(webContents, urls, _mode = 'prefetch') {
         prefetchedBytes.set(url, res.bytes);
         result.succeeded.push(url);
         result.bytes[url] = res.bytes;
-        logger.debug('Prefetch completed', {
+        logger.info('Prefetch OK', {
           url: url.substring(0, 80),
           bytes: res.bytes,
           status: res.status,
         });
       } else {
         result.failed.push(url);
-        logger.debug('Prefetch failed', {
+        logger.info('Prefetch failed', {
           url: url.substring(0, 80),
           status: res.status,
         });
@@ -96,7 +96,7 @@ async function injectSpeculationRules(webContents, urls, _mode = 'prefetch') {
     } catch (err) {
       inflight.delete(url);
       result.failed.push(url);
-      logger.debug('Prefetch error', {
+      logger.info('Prefetch error', {
         url: url.substring(0, 80),
         error: err.message,
       });

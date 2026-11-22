@@ -1,110 +1,152 @@
 /**
- * @fileoverview Export a trained model to a portable JSON format.
- * The exported format can be loaded on the desktop client and evaluated
- * with a tiny custom evaluator — no ML npm packages needed client-side.
+ * @fileoverview Export a trained GBDT model into a portable, high-performance JSON format.
+ *
+ * Format guarantees:
+ * - Flat arrays per tree: feature, threshold, left, right, value
+ * - baseScore / baseMargin
+ * - featureNames (from @glimpse/shared/features)
+ * - schemaVersion (FEATURE_SCHEMA_VERSION = 2)
+ * - domainStats (Bayesian-smoothed CTR lookup table)
+ * - Platt calibration parameters (A, B)
+ * - sha256 checksum of model JSON
+ * - Golden test vectors for train/serve parity verification
+ * - Stored directly in ml_model_versions.model_json
+ *
  * @module cloud-api/ml/export-model
  */
 
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { FEATURE_NAMES } = require('./feature-engineer');
+const crypto = require('node:crypto');
+const { FEATURE_NAMES, FEATURE_SCHEMA_VERSION, buildFeatures } = require('@glimpse/shared/features');
 const logger = require('../utils/logger');
 
 /**
- * Recursively serialize a decision tree node to a plain object.
- * ml-cart trees have a root property with .left, .right, .splitColumn,
- * .splitValue, and .distribution (leaf) properties.
- *
- * @param {object} node - ml-cart tree node
- * @returns {object} Serialized node
+ * Generate 5 representative golden test vectors and compute their expected probabilities.
+ * @param {object} model - Model with predictProba()
+ * @param {object} domainStats
+ * @returns {Array<{ name: string, input: number[], expectedProba: number }>}
  */
-function serializeTreeNode(node) {
-  if (!node) return null;
+function generateGoldenVectors(model, domainStats) {
+  const cases = [
+    {
+      name: 'top1_google_wikipedia',
+      ctx: { position: 1, visibleCount: 10, visibleOnLoad: true, engine: 'google', domain: 'en.wikipedia.org', tld: 'org' },
+    },
+    {
+      name: 'top3_github_code_query',
+      ctx: { position: 3, visibleCount: 10, visibleOnLoad: true, engine: 'google', domain: 'github.com', tld: 'com', queryFeatures: { intent: { code: 1 }, wordCount: 4 } },
+    },
+    {
+      name: 'pos6_duckduckgo_generic',
+      ctx: { position: 6, visibleCount: 10, visibleOnLoad: false, engine: 'duckduckgo', domain: 'example.org', tld: 'org' },
+    },
+    {
+      name: 'pos10_bottom_unknown',
+      ctx: { position: 10, visibleCount: 10, visibleOnLoad: false, engine: 'bing', domain: 'unknown-blog.xyz', tld: 'xyz' },
+    },
+    {
+      name: 'pos2_transactional_amazon',
+      ctx: { position: 2, visibleCount: 10, visibleOnLoad: true, engine: 'google', domain: 'amazon.com', tld: 'com', queryFeatures: { intent: { transactional: 1 } } },
+    },
+  ];
 
-  /* Leaf node — has a distribution or category */
-  if (node.distribution !== undefined || node.left === undefined) {
+  return cases.map((c) => {
+    const vec = buildFeatures(c.ctx, domainStats);
+    const prob = model.predictProba([vec])[0];
     return {
-      type: 'leaf',
-      prediction: node.category !== undefined ? node.category : 0,
-      distribution: node.distribution || null,
+      name: c.name,
+      input: vec,
+      expectedProba: Number(prob.toFixed(6)),
     };
-  }
-
-  /* Internal node — has split condition */
-  return {
-    type: 'split',
-    featureIndex: node.splitColumn,
-    threshold: node.splitValue,
-    left: serializeTreeNode(node.left),
-    right: serializeTreeNode(node.right),
-  };
+  });
 }
 
 /**
- * Serialize a trained gradient boosted model to portable JSON.
- * The client evaluator walks each tree, follows split decisions,
- * gets leaf values, and sums up: initialPrediction + sum(learningRate * leafValue)
- * Then applies sigmoid for the final probability.
- *
- * @param {object} model - Trained model from train.js
- * @param {string[]} featureNames - Feature names in order
- * @param {object} metrics - Evaluation metrics
- * @returns {{ filePath: string, fileSizeBytes: number, versionString: string }}
+ * Compute SHA256 checksum of stringified JSON.
+ * @param {string} str
+ * @returns {string} Hex hash
  */
-async function exportModel(model, featureNames, metrics) {
-  const versionString = `1.${Math.floor(Date.now() / 1000) % 100000}.0`;
+function computeSha256(str) {
+  return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
+}
 
-  const exportData = {
+/**
+ * Serialize and package model into canonical model_json object.
+ *
+ * @param {object} params
+ * @param {object} params.model - Fitted GBDT instance
+ * @param {object} params.metrics - Evaluation metrics from evaluateModel
+ * @param {object} params.domainStats - Domain statistics dictionary
+ * @param {string} [params.versionString] - e.g. 'v2.1.0'
+ * @param {object} [params.config] - Training hyperparameters
+ * @param {string} [params.datasetHash] - Hash of training dataset
+ * @returns {{ modelJson: object, checksumSha256: string, versionString: string }}
+ */
+function exportModel(params) {
+  const {
+    model,
+    metrics = {},
+    domainStats = {},
+    versionString = `v2.${Math.floor(Date.now() / 1000) % 100000}.0`,
+    config = {},
+    datasetHash = 'dataset_hash_placeholder',
+  } = params;
+
+  // 1. Generate golden vectors for parity testing
+  const goldenVectors = generateGoldenVectors(model, domainStats);
+
+  // 2. Build model JSON structure with flat arrays
+  const modelJson = {
+    schemaVersion: FEATURE_SCHEMA_VERSION,
     version: versionString,
-    trainedAt: new Date().toISOString(),
-    modelType: 'gradient_boosted_trees',
-    features: featureNames || [...FEATURE_NAMES],
-    featureCount: (featureNames || FEATURE_NAMES).length,
-    hyperparameters: {
-      nEstimators: model.nEstimators,
-      maxDepth: model.maxDepth,
-      learningRate: model.learningRate,
-    },
-    metrics: metrics || {},
-    initialPrediction: model.initialPrediction,
+    modelType: 'histogram_gbdt',
+    createdAt: new Date().toISOString(),
+    baseScore: model.baseScore,
+    baseMargin: model.baseMargin,
     learningRate: model.learningRate,
-    threshold: model.threshold,
-    trees: model.trees.map(({ tree, leafValues, round }) => ({
-      round,
-      leafValues: Object.fromEntries(
-        Object.entries(leafValues).map(([k, v]) => [k, parseFloat(v.toFixed(6))])
-      ),
-      root: serializeTreeNode(tree.root || tree),
+    featureNames: FEATURE_NAMES,
+    trees: model.trees.map((t) => ({
+      feature: t.feature,
+      threshold: t.threshold,
+      left: t.left,
+      right: t.right,
+      value: t.value.map((v) => Number(v.toFixed(6))),
     })),
+    domainStats,
+    // Optional Platt calibration parameters (identity default: A=1, B=0)
+    calibration: {
+      method: 'platt',
+      a: 1.0,
+      b: 0.0,
+    },
+    goldenVectors,
+    metrics,
+    config,
+    datasetHash,
   };
 
-  /* Write to models/latest.json */
-  const outputDir = path.resolve(__dirname, 'models');
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
+  // 3. Compute checksum over canonical JSON (excluding checksum field itself)
+  const canonicalString = JSON.stringify(modelJson);
+  const checksumSha256 = computeSha256(canonicalString);
+  modelJson.checksumSha256 = checksumSha256;
 
-  const filePath = path.join(outputDir, 'latest.json');
-  const jsonStr = JSON.stringify(exportData, null, 0); /* compact for file size */
-
-  fs.writeFileSync(filePath, jsonStr, 'utf8');
-
-  const stats = fs.statSync(filePath);
-
-  logger.info('Model exported to JSON', {
-    filePath,
-    fileSizeBytes: stats.size,
+  logger.info('Model successfully serialized for cloud export', {
     version: versionString,
-    treeCount: exportData.trees.length,
+    treeCount: modelJson.trees.length,
+    checksumSha256,
+    goldenVectorCount: goldenVectors.length,
   });
 
   return {
-    filePath,
-    fileSizeBytes: stats.size,
+    modelJson,
+    checksumSha256,
     versionString,
   };
 }
 
-module.exports = { exportModel };
+module.exports = {
+  exportModel,
+  generateGoldenVectors,
+  computeSha256,
+};

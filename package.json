@@ -8,11 +8,18 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "turbo run dev",
     "dev:desktop": "turbo run dev --filter=@glimpse/desktop",
     "dev:api": "turbo run dev --filter=@glimpse/cloud-api",
     "build:desktop": "turbo run build --filter=@glimpse/desktop",
     "build:win": "turbo run build:win --filter=@glimpse/desktop",
     "build:mac": "turbo run build:mac --filter=@glimpse/desktop",
+    "ml:export-dataset": "turbo run ml:export-dataset --filter=@glimpse/cloud-api",
+    "ml:train": "turbo run ml:train --filter=@glimpse/cloud-api",
+    "ml:evaluate": "turbo run ml:evaluate --filter=@glimpse/cloud-api",
+    "ml:simulate": "turbo run ml:simulate --filter=@glimpse/cloud-api",
+    "bench:prefetch": "turbo run bench:prefetch --filter=@glimpse/desktop",
+    "bench:smoke": "turbo run bench:smoke --filter=@glimpse/desktop",
     "install:all": "npm install --workspaces",
     "test": "turbo run test"
   },

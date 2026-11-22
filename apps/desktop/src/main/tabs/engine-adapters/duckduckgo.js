@@ -29,4 +29,13 @@ module.exports = Object.freeze({
       return null;
     }
   },
+
+  resolveDestination(href) {
+    try {
+      const parsed = new URL(href);
+      const uddg = parsed.searchParams.get('uddg');
+      if (uddg && uddg.startsWith('http')) return uddg;
+    } catch { /* fall through */ }
+    return href;
+  },
 });

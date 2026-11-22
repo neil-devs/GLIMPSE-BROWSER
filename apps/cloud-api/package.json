@@ -10,7 +10,11 @@
     "test": "jest --coverage",
     "lint": "eslint src/",
     "job:retrain": "node -e \"require('./src/jobs/retrain-model.job').runRetraining()\"",
-    "job:cleanup": "node -e \"require('./src/jobs/cleanup-telemetry.job').runCleanup()\""
+    "job:cleanup": "node -e \"require('./src/jobs/cleanup-telemetry.job').runCleanup()\"",
+    "ml:export-dataset": "node src/ml/export-dataset.js",
+    "ml:train": "node src/ml/train.js",
+    "ml:evaluate": "node src/ml/evaluate.js",
+    "ml:simulate": "node src/ml/simulate.js"
   },
   "dependencies": {
     "@glimpse/shared": "*",
@@ -22,7 +26,6 @@
     "express-rate-limit": "7.4.0",
     "helmet": "7.1.0",
     "jsonwebtoken": "9.0.2",
-    "ml-cart": "^2.0.0",
     "morgan": "^1.12.1",
     "node-cron": "^4.6.0",
     "uuid": "^14.0.2",

@@ -37,13 +37,15 @@ async function getLatestModel(req, res, next) {
         version: model.version_string,
         modelType: model.model_type,
         trainingDataCount: model.training_data_count,
-        metrics: {
+        metrics: model.metrics || {
           accuracy: model.accuracy_score,
           precision: model.precision_score,
           recall: model.recall_score,
           f1: model.f1_score,
           aucRoc: model.auc_roc_score,
         },
+        checksumSha256: model.checksum_sha256 || null,
+        schemaVersion: model.schema_version || 2,
         fileSizeBytes: model.model_file_size_bytes,
         trainedAt: model.trained_at,
         deployedAt: model.deployed_at,
@@ -62,7 +64,7 @@ async function downloadModel(req, res, next) {
     /* Find active model */
     const { data: model, error } = await supabase
       .from('ml_model_versions')
-      .select('model_file_path, version_string')
+      .select('*')
       .eq('is_active', true)
       .eq('model_type', 'click_predictor')
       .order('created_at', { ascending: false })
@@ -71,6 +73,11 @@ async function downloadModel(req, res, next) {
 
     if (error || !model) {
       throw Errors.MODEL_NOT_FOUND();
+    }
+
+    /* If model JSON is stored in DB, send it directly */
+    if (model.model_json) {
+      return res.json(model.model_json);
     }
 
     /* Resolve model file path */
@@ -122,6 +129,35 @@ async function downloadModel(req, res, next) {
  */
 async function reportAccuracy(req, res, next) {
   try {
+    /* Support aggregated field stats (B7 requirement) */
+    if (req.body.installId || req.body.install_id) {
+      const installId = req.body.installId || req.body.install_id;
+      const modelVersion = req.body.modelVersion || req.body.model_version || 'v2.0.0';
+      const day = req.body.day || new Date().toISOString().slice(0, 10);
+      const searches = Number(req.body.searches) || 0;
+      const hitsTop1 = Number(req.body.hitsTop1 ?? req.body.hits_top1 ?? 0);
+      const hitsTop3 = Number(req.body.hitsTop3 ?? req.body.hits_top3 ?? 0);
+      const hitsTop6 = Number(req.body.hitsTop6 ?? req.body.hits_top6 ?? 0);
+      const baselineHitsTop3 = Number(req.body.baselineHitsTop3 ?? req.body.baseline_hits_top3 ?? 0);
+
+      const { error: statsErr } = await supabase
+        .from('model_field_stats')
+        .upsert({
+          install_id: installId,
+          model_version: modelVersion,
+          day,
+          searches,
+          hits_top1: hitsTop1,
+          hits_top3: hitsTop3,
+          hits_top6: hitsTop6,
+          baseline_hits_top3: baselineHitsTop3,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'install_id,model_version,day' });
+
+      if (statsErr) throw statsErr;
+      return res.status(200).json({ success: true, data: { recorded: true } });
+    }
+
     const userId = req.user?.id || null;
     const deviceId = req.device?.id || null;
 

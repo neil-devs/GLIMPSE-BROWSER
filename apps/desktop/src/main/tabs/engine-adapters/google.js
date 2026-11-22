@@ -28,10 +28,16 @@ module.exports = Object.freeze({
     }
   },
 
-  /** CSS selector that targets organic search result links */
+  /** CSS selector that targets organic search result links.
+   *  Google wraps result links as google.com/url?... redirects,
+   *  so we CANNOT exclude [href*="google."] — the getRealUrl()
+   *  function in visibility-detector handles extracting the real URL.
+   *  We only exclude obvious non-result links (buttons, nav, footer).
+   */
   resultLinkSelector:
-    '#search .g a[href^="http"]:not([href*="google."]):not([role="button"]), ' +
-    '#rso .g a[href^="http"]:not([href*="google."]):not([role="button"])',
+    '#rso a[href]:not([role="button"]):not([href="#"]):not([href^="javascript"]), ' +
+    '#search a[href]:not([role="button"]):not([href="#"]):not([href^="javascript"]), ' +
+    'div[data-sokoban] a[href]:not([role="button"])',
 
   /**
    * Extract the search query from a Google results URL.
@@ -44,5 +50,23 @@ module.exports = Object.freeze({
     } catch {
       return null;
     }
+  },
+
+  /**
+   * Resolve the real destination URL from a Google redirect link.
+   * @param {string} href
+   * @returns {string}
+   */
+  resolveDestination(href) {
+    try {
+      const parsed = new URL(href);
+      if (parsed.hostname.includes('google.') && parsed.pathname === '/url') {
+        const real = parsed.searchParams.get('q') || parsed.searchParams.get('url');
+        if (real && real.startsWith('http')) return real;
+      }
+      /* /goto URLs use encrypted payloads — can't decode, return as-is.
+       * The pool WebContentsView will follow the redirect automatically. */
+    } catch { /* fall through */ }
+    return href;
   },
 });

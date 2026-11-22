@@ -98,13 +98,15 @@ function autoDetectNetwork() {
     /* net module may not be available in tests */
   }
 
-  /* Assume a reasonable desktop connection */
-  estimatedBandwidthMbps = 10;
+  /* Assume a good desktop connection — desktop Electron apps are
+   * almost always on broadband. Default high enough to trigger
+   * aggressive mode so prefetching starts at full speed on launch. */
+  estimatedBandwidthMbps = 50;
   networkType = 'wifi';
   isMetered = false;
   hasAutoDetected = true;
 
-  logger.debug('Auto-detect: assuming wifi @ 10 Mbps');
+  logger.debug('Auto-detect: assuming broadband @ 50 Mbps');
 }
 
 /**
@@ -140,22 +142,23 @@ function shouldPrefetch(_url) {
     }
   }
 
-  /* Bandwidth-based restrictions */
-  if (estimatedBandwidthMbps < 0.5) {
+  /* Bandwidth-based restrictions — softened for desktop users.
+   * Most desktop users are on broadband; only block at very low speeds. */
+  if (estimatedBandwidthMbps < 0.3) {
     return {
       allowed: false,
       reason: 'insufficient_bandwidth',
     };
   }
 
-  if (estimatedBandwidthMbps < 1) {
+  if (estimatedBandwidthMbps < 0.8) {
     return {
       allowed: true,
       suggestedAggressiveness: 'conservative',
     };
   }
 
-  if (estimatedBandwidthMbps > 10) {
+  if (estimatedBandwidthMbps > 5) {
     return {
       allowed: true,
       suggestedAggressiveness: 'aggressive',

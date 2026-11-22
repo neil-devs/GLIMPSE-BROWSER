@@ -163,6 +163,17 @@ function createTables() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- ── Telemetry Queue ───────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS telemetry_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_telemetry_queue_next ON telemetry_queue(next_attempt_at);
   `);
 }
 

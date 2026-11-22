@@ -6,6 +6,9 @@ directories:
   output: dist
 files:
   - out/**/*
+extraResources:
+  - from: resources/default-model.json
+    to: resources/default-model.json
 asarUnpack:
   - '**/*.node'
 win:

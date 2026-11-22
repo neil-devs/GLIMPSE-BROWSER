@@ -136,6 +136,7 @@ const downloads = {
 
 const prefetch = {
   getStatus: () => ipcRenderer.invoke(PREFETCH.GET_STATUS),
+  getStats: () => ipcRenderer.invoke('prefetch:getStats'),
   clearCache: () => ipcRenderer.invoke(PREFETCH.CLEAR_CACHE),
   getLog: (limit) => ipcRenderer.invoke(PREFETCH.GET_LOG, limit),
   setAggressiveness: (level) => ipcRenderer.invoke(PREFETCH.SET_AGGRESSIVENESS, level),

@@ -1,164 +1,73 @@
-# Glimpse Browser — Prefetch Engine
+# Glimpse Browser — Prefetch Engine Architecture (v2.0)
 
 ## Overview
 
-The prefetch engine is Glimpse's core differentiator. It detects which search result links are visible on screen, predicts which one the user is most likely to click, and silently prerenders those pages in the background using Chromium's Speculation Rules API. When the user clicks, the page loads instantly.
+The prefetch engine is Glimpse's core differentiator. It detects which search result links are visible in the user's viewport, uses an on-device machine learning model to rank predicted click probabilities, and pre-renders high-probability pages into hidden `WebContentsView` pool slots. When the user clicks, the page appears with zero buffering and near-zero latency ($< 5$ ms).
 
-## How It Works
+---
 
-### 1. Visibility Detection (`visibility-detector.js`)
-
-When a search results page loads, the preload script injects an `IntersectionObserver` that watches all result link elements on the page.
-
-```javascript
-// Simplified — the actual implementation is in the preload script
-const observer = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    if (entry.isIntersecting) {
-      // Link is now visible in the viewport
-      ipcRenderer.send('prefetch:linkDetected', {
-        url: entry.target.href,
-        position: getPosition(entry.target),
-        domain: new URL(entry.target.href).hostname,
-      });
-    }
-  }
-}, {
-  threshold: 0.5, // At least 50% of the link must be visible
-});
-```
-
-**Key design decisions:**
-- Uses `threshold: 0.5` — a link must be at least 50% visible to trigger
-- The observer adapts to ANY screen resolution or window size automatically
-- No hardcoded pixel values or link counts
-- As the user scrolls, newly visible links are detected and queued
-
-### 2. Engine Adapters (`engine-adapters/`)
-
-Each supported search engine has an adapter that knows the CSS selector for that engine's result links:
-
-| Engine      | CSS Selector                            |
-|-------------|----------------------------------------|
-| Google      | `div.g a[href]:not([href*="google"])`   |
-| Bing        | `li.b_algo h2 a`                        |
-| DuckDuckGo  | `article[data-testid="result"] a`       |
-| Yahoo       | `div.algo a.ac-algo`                    |
-| Baidu       | `div.result h3 a`                       |
-| Yandex      | `li.serp-item a.link`                   |
-
-The adapter is selected automatically based on the current URL hostname.
-
-### 3. Click Prediction (`ml/click-predictor.js`)
-
-When bandwidth or memory is constrained, the ML model ranks visible links by predicted click probability. This determines prefetch priority.
-
-Features used:
-- **Link position** (top links get higher scores)
-- **Domain reputation** (wikipedia.org → 1.0, unknown → 0.5)
-- **Search engine** (one-hot encoded)
-- **Query length** (short/medium/long buckets)
-- **Prefetch status** (already prefetched or not)
-
-The model runs entirely on-device as a tiny decision tree ensemble evaluator — no ML libraries needed at runtime.
-
-### 4. Speculation Rules Injection (`speculation-injector.js`)
-
-Once target URLs are selected, the engine injects Chromium's Speculation Rules API into the page:
-
-```javascript
-// Injected into the webContents via executeJavaScript
-const speculationRules = {
-  prerender: [{
-    urls: ["https://example.com/page1", "https://example.com/page2"],
-    eagerness: "moderate"
-  }]
-};
-
-const script = document.createElement('script');
-script.type = 'speculationrules';
-script.textContent = JSON.stringify(speculationRules);
-document.head.appendChild(script);
-```
-
-This tells Chromium to prerender these pages in hidden tabs, so they're ready to swap in instantly on navigation.
-
-### 5. Prefetch Scheduler (`prefetch-scheduler.js`)
-
-The scheduler coordinates the overall flow:
+## 1. End-to-End Prefetch Pipeline
 
 ```
-Visible links detected
-       ↓
-Filter out already-prefetched URLs
-       ↓
-ML model ranks remaining links by click probability
-       ↓
-Bandwidth guard checks available bandwidth
-       ↓
-Take top N links (based on aggressiveness level)
-       ↓
-Inject speculation rules
-       ↓
-Track prefetch status and performance
+┌────────────────────────────────────────────────────────────────────────┐
+│ 1. VISIBILITY DETECTION (visibility-detector.js)                       │
+│    - IntersectionObserver detects organic result links in viewport     │
+│    - Adapts dynamically to window dimensions & zoom levels             │
+│    - >80ms cursor hover triggers Hover Boost (instant top-priority)    │
+├────────────────────────────────────────────────────────────────────────┤
+│ 2. PRECONNECT ACCELERATION (numSockets: 3)                             │
+│    - Immediately opens parallel TCP + TLS handshakes to visible origins│
+├────────────────────────────────────────────────────────────────────────┤
+│ 3. ML RANKING (click-predictor.js & @glimpse/shared/features)          │
+│    - 39-feature vector scored by on-device flat-array GBDT             │
+│    - Priority queue decides which links enter prefetch pool slots      │
+├────────────────────────────────────────────────────────────────────────┤
+│ 4. PRELOAD POOL (preload-pool.js)                                      │
+│    - Dedicated WebContentsViews pre-rendered at exact window bounds    │
+│    - Placed directly in window hierarchy behind active tab (index 1)   │
+│    - Memory ceiling guard: evicts oldest entry if RAM > 1.5 GB         │
+│    - TTL: 120-second automatic expiration                              │
+├────────────────────────────────────────────────────────────────────────┤
+│ 5. INSTANT SWAP (tab-manager.js)                                       │
+│    - On link click: addChildView(poolView) brings view to top of stack │
+│    - ZERO surface teardown — DirectComposition visual stays intact     │
+│    - Unmutes audio, focuses WebContents, and runs without throttling   │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 6. Bandwidth Guard (`bandwidth-guard.js`)
+---
 
-Prevents prefetching from degrading the user's browsing experience:
+## 2. Zero-Blackout Instant Swap Architecture
 
-- Estimates available bandwidth using the Network Information API
-- Checks `navigator.connection.effectiveType` and `downlink`
-- Respects the `prefetchOnMeteredNetwork` setting
-- Reduces concurrent prefetches on slow connections
+Earlier versions suffered from blacked-out screens or flickering when swapping views due to:
+1. **Compositor Surface Teardown**: Calling `removeChildView(view)` destroys the underlying DirectComposition / RenderWidgetHost surface on Windows. Re-adding it requires Chromium to allocate a new swapchain, leaving an empty frame until the next paint.
+2. **Viewport Culling**: Placing pool views at extreme off-screen coordinates (`y: -10000`) caused Chromium's compositor to cull tiles, skipping rasterization entirely.
 
-### 7. Cache Manager (`cache-manager.js`)
+### The Solution:
+- **Exact-Size Composition**: Pooled `WebContentsViews` are created with the exact current window dimensions:
+  `{ x: 0, y: CHROME_HEIGHT, width: winBounds.width, height: winBounds.height - CHROME_HEIGHT }`
+- **Z-Index Layering**: The view is inserted into `contentView` at index 1 (behind the active tab). Because it is within the viewport, Chromium renders and rasters tiles with full GPU acceleration.
+- **Topmost Reordering**: When the user clicks, calling `contentView.addChildView(poolView)` without removing it automatically reorders the view to become topmost in the visual tree without tearing down the native surface.
 
-Manages the prefetch cache:
+---
 
-- Tracks which URLs are currently prerendered
-- Enforces the `cacheSizeLimitMb` setting
-- Evicts least-recently-used entries when the cache is full
-- Logs cache hits/misses to `prefetch_cache_log` for analytics
+## 3. Prefetch Engine Flags & Tuning
 
-## Aggressiveness Levels
+| Flag | Default | Description |
+|---|---|---|
+| `preconnectAll` | `true` | Opens 3 parallel sockets (DNS + TCP + TLS) to all visible search result domains. |
+| `hoverBoost` | `true` | If cursor lingers over an organic link for $> 80$ ms, preconnects and pools it with priority 0. |
+| `stagedConcurrency` | `2` | Limits concurrently loading pool entries to avoid saturating consumer broadband connections. |
+| `readyMode` | `'usable'` | Marks pool slots ready upon `dom-ready` rather than waiting for slow external ads/trackers. |
+| `poolSize` | `6` | Maximum concurrent views in pool (3 for conservative, 6 for balanced, 12 for aggressive). |
+| `throttleAfterReady` | `true` | Throttles background timers in pooled views once `ready` to reduce CPU usage to $< 8\%$. |
 
-| Level        | Max Concurrent | Min Visibility | Bandwidth Threshold | Max Cache |
-|-------------|---------------|---------------|-------------------|-----------|
-| Conservative | 2             | 1500ms        | 5 Mbps            | 200 MB    |
-| Balanced     | 4             | 800ms         | 2 Mbps            | 500 MB    |
-| Aggressive   | 6             | 300ms         | 0.5 Mbps          | 1000 MB   |
+---
 
-- **Min Visibility**: How long a link must be visible before triggering prefetch
-- **Bandwidth Threshold**: Minimum available bandwidth to start prefetching
-- **Max Concurrent**: Maximum simultaneous prerender operations
+## 4. Live HUD Diagnostics (`Ctrl+Shift+P` / `Cmd+Shift+P`)
 
-## Telemetry & Metrics
-
-Every prefetch operation is tracked:
-
-```
-Event Type              → Storage Location
-────────────────────────────────────────────
-Link detected as visible → result_link_events.was_visible_on_load
-Prefetch triggered       → result_link_events.prefetch_started_at
-Prefetch completed       → result_link_events.prefetch_completed_at
-Prefetch duration        → result_link_events.prefetch_duration_ms
-Link clicked             → result_link_events.was_clicked
-Cache hit                → result_link_events.cache_hit
-Page load time           → result_link_events.page_load_time_ms
-Bytes transferred        → prefetch_performance_log.bytes_transferred
-Failure reason           → prefetch_performance_log.failure_reason
-```
-
-This data is used to:
-1. Show the user real-time prefetch status in the UI (PrefetchIndicator)
-2. Retrain the ML model with real-world click patterns
-3. Compare prefetched vs non-prefetched page load times (A/B metrics)
-
-## Error Handling
-
-- If a prefetch fails (network error, 404, timeout), it's logged and skipped
-- The user's browsing experience is never interrupted by a prefetch failure
-- Failed prefetches do not retry automatically (to avoid wasting bandwidth)
-- All errors are logged to both local SQLite and (if online) cloud telemetry
+Developers and power users can press `Ctrl+Shift+P` (or `Cmd+Shift+P`) at any time to inspect live prefetch metrics:
+- Active pool slots & ready count
+- Estimated memory footprint
+- Session Hit Rate (%)
+- Real-time click-to-usable swap latency (ms)

@@ -2,7 +2,7 @@
   "name": "@glimpse/desktop",
   "version": "1.0.0",
   "description": "Glimpse Browser — Desktop application (Electron)",
-  "main": "out/main/index.js",
+  "main": "../../../../../.glimpse-build/main/index.js",
   "private": true,
   "author": "neil-devs",
   "scripts": {
@@ -14,6 +14,8 @@
     "package": "electron-builder --win",
     "package:all": "electron-builder --win --mac --linux",
     "test": "jest --coverage",
+    "bench:prefetch": "node bench/index.js --full",
+    "bench:smoke": "node bench/index.js --smoke",
     "lint": "eslint src/"
   },
   "dependencies": {

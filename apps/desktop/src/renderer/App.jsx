@@ -8,6 +8,7 @@ import AddressBar from './components/AddressBar';
 import NewTabPage from './components/NewTabPage';
 import Sidebar from './components/Sidebar';
 import Notifications from './components/Notifications';
+import DevOverlay from './components/DevOverlay';
 import useTabStore from './store/tab-store';
 import useUiStore from './store/ui-store';
 import './styles/global.css';
@@ -43,6 +44,7 @@ export default function App() {
       <NewTabPage />
       <Sidebar />
       <Notifications />
+      <DevOverlay />
     </div>
   );
 }

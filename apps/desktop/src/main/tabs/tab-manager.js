@@ -18,8 +18,26 @@ const tabState = require('./tab-state');
 const { getAdapter, isSearchResultsPage } = require('./engine-adapters');
 const { buildVisibilityDetectorScript } = require('../prefetch/visibility-detector');
 const prefetchScheduler = require('../prefetch/prefetch-scheduler');
+const pool = require('../prefetch/preload-pool');
 const history = require('../storage/history');
 const { buildErrorPageHtml } = require('../utils/error-handler');
+const sessionTracker = require('../telemetry/session-tracker');
+
+const PREFIX = '[glimpse:prefetch]';
+
+/**
+ * Find tab ID from webContents instance.
+ * @param {Electron.WebContents} wc
+ * @returns {string|null}
+ */
+function getTabIdByWebContents(wc) {
+  if (!wc) return null;
+  if (wc._glimpseTabId) return wc._glimpseTabId;
+  for (const [id, view] of tabViews) {
+    if (view && view.webContents === wc) return id;
+  }
+  return tabState.getActiveId() || null;
+}
 
 /** Lazy-load telemetry client to avoid circular deps */
 let _telemetry = null;
@@ -33,6 +51,9 @@ function getTelemetry() {
 /** Map of tabId → WebContentsView */
 const tabViews = new Map();
 
+/** Map of tabId → { viewStack: WebContentsView[], currentPoolHref: string|null, adapter: object|null } */
+const tabSwapState = new Map();
+
 /** Reference to the BaseWindow */
 let mainWindow = null;
 
@@ -43,7 +64,7 @@ let chromeView = null;
 const CHROME_HEIGHT = 82;
 
 /** Path to the tab preload script */
-const TAB_PRELOAD_PATH = path.join(app.getAppPath(), 'out', 'preload', 'tab-preload.js');
+const TAB_PRELOAD_PATH = path.join(__dirname, '..', 'preload', 'tab-preload.js');
 
 /**
  * Initialize the tab manager with the main window reference.
@@ -54,167 +75,288 @@ function init(win, chrome) {
   mainWindow = win;
   chromeView = chrome;
 
+  /* ── Give the pool a reference to the window so pool views are attached ── */
+  pool.setMainWindow(win);
+
   /* Listen for prefetch IPC events from tab preload bridge (__glimpseIPC) */
   ipcMain.on('prefetch:link-visible', (event, data) => {
-    logger.debug('Link visible', { url: (data.url || '').substring(0, 60), position: data.position });
+    logger.info(`${PREFIX} [2] link-visible`, { url: (data.url || '').substring(0, 60), position: data.position });
     prefetchScheduler.onLinkVisible(data.url, data.position, data.domain, event.sender);
+
+    const tabId = getTabIdByWebContents(event.sender);
+    if (tabId) {
+      sessionTracker.recordLinkSeen(tabId, {
+        url: data.url,
+        position: data.position,
+        domain: data.domain,
+        linkTextLength: data.linkTextLength || 0,
+        firstVisibleMs: data.firstVisibleMs || 0,
+        visibleOnLoad: data.visibleOnLoad || false,
+      });
+    }
   });
 
   ipcMain.on('prefetch:link-hidden', (_event, data) => {
     prefetchScheduler.onLinkHidden(data.url);
   });
 
+  ipcMain.on('prefetch:link-hover', (event, data) => {
+    logger.debug(`${PREFIX} link-hover boost`, { url: (data.url || '').substring(0, 60), position: data.position });
+    prefetchScheduler.onLinkHover(data.url, data.position, data.domain, event.sender);
+  });
+
   ipcMain.on('prefetch:viewport-info', (_event, data) => {
-    logger.debug('Viewport info', {
+    logger.info('Viewport info', {
       screen: `${data.screenWidth}x${data.screenHeight}`,
       window: `${data.windowWidth}x${data.windowHeight}`,
       dpr: data.devicePixelRatio,
     });
   });
 
-  ipcMain.on('prefetch:link-clicked', (_event, data) => {
-    logger.debug('Link clicked', { url: (data.url || '').substring(0, 60), fromCache: data.fromCache });
+  ipcMain.on('prefetch:link-clicked', (event, data) => {
+    logger.info(`${PREFIX} [5] click event from renderer`, { url: (data.url || '').substring(0, 60), fromCache: data.fromCache });
     prefetchScheduler.onLinkClicked(data.url, data.fromCache);
 
-    /* Log page load event for telemetry (cache hit tracking) */
-    try {
-      const tel = getTelemetry();
-      if (tel) {
-        tel.logPageLoad({
-          url: data.url,
-          fromCache: data.fromCache || false,
-          position: data.position || 0,
-        });
-      }
-    } catch { /* best effort */ }
-  });
-}
-
-/**
- * Open a print preview as an inline overlay inside the main window.
- * Generates a PDF and displays it using Chromium's built-in PDF viewer
- * as a WebContentsView overlay. Press Escape to close the preview.
- *
- * @param {Electron.WebContents} webContents
- */
-let printPreviewView = null;
-
-function openPrintPreview(webContents) {
-  /* Don't open multiple previews */
-  if (printPreviewView) return;
-
-  webContents.printToPDF({ printBackground: true }).then((pdfData) => {
-    const tmpPath = path.join(app.getPath('temp'), `glimpse-print-${Date.now()}.pdf`);
-    fs.writeFileSync(tmpPath, pdfData);
-
-    printPreviewView = new WebContentsView({
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
-    /* Position: cover only the tab content area (below chrome bar) */
-    if (mainWindow) {
-      let { width, height } = mainWindow.getContentBounds();
-      if (width === 0 || height === 0) { width = 1280; height = 800; }
-      printPreviewView.setBounds({ x: 0, y: CHROME_HEIGHT, width, height: height - CHROME_HEIGHT });
-      mainWindow.contentView.addChildView(printPreviewView);
+    const tabId = getTabIdByWebContents(event.sender);
+    if (tabId) {
+      sessionTracker.recordLinkClick(tabId, data.url, {
+        clickClass: data.fromCache ? 'HIT_READY' : 'MISS_NOT_POOLED',
+      });
     }
+  });
 
-    printPreviewView.webContents.loadURL(`file://${tmpPath.replace(/\\/g, '/')}`);
+  /* ── prefetch:getStats IPC handler (Step 6) ───────────────── */
+  ipcMain.handle('prefetch:getStats', () => {
+    return pool.getStats();
+  });
+}
 
-    /* Close on Escape key */
-    printPreviewView.webContents.on('before-input-event', (event, input) => {
-      if (input.key === 'Escape' && input.type === 'keyDown') {
-        closePrintPreview(tmpPath);
-      }
-    });
+/**
+ * Inject the visibility detector into a webContents if it's on a search results page.
+ * Made into a standalone function so it can be called from both did-finish-load
+ * and did-navigate-in-page (search engines update results via pushState).
+ * @param {Electron.WebContents} wc
+ * @param {string} tabId
+ */
+function injectDetectorIfSearch(wc, tabId) {
+  const currentUrl = wc.getURL();
+  const adapter = getAdapter(currentUrl);
+  if (!adapter) return;
 
-    /* Also handle window resize */
-    const onResize = () => {
-      if (!printPreviewView || !mainWindow) return;
-      let { width, height } = mainWindow.getContentBounds();
-      if (width === 0 || height === 0) { width = 1280; height = 800; }
-      printPreviewView.setBounds({ x: 0, y: CHROME_HEIGHT, width, height: height - CHROME_HEIGHT });
-    };
-    mainWindow.on('resize', onResize);
+  logger.info(`${PREFIX} [1] detector injecting`, { engine: adapter.name, url: currentUrl });
 
-    /* Clean up resize listener when preview closes */
-    printPreviewView._onResize = onResize;
-    printPreviewView._tmpPath = tmpPath;
+  /* Store adapter on the swap state for this tab */
+  const ss = tabSwapState.get(tabId);
+  if (ss) ss.adapter = adapter;
 
+  /* Set the engine for the prefetch scheduler */
+  prefetchScheduler.setCurrentEngine(adapter.name);
+
+  /* Inject visibility detector script */
+  const script = buildVisibilityDetectorScript(adapter.resultLinkSelector);
+  wc.executeJavaScript(script).then(() => {
+    /* Count links found */
+    wc.executeJavaScript(`document.querySelectorAll(${JSON.stringify(adapter.resultLinkSelector)}).length`)
+      .then((count) => {
+        logger.info(`${PREFIX} [1] detector injected`, { engine: adapter.name, selector: adapter.resultLinkSelector.substring(0, 40), linkCount: count });
+      })
+      .catch(() => {});
   }).catch((err) => {
-    logger.error('Print preview failed', { message: err.message });
+    logger.error(`${PREFIX} Failed to inject visibility detector`, { message: err.message });
   });
+
+  /* Inject viewport info reporter */
+  const viewportScript = `
+    (function() {
+      if (typeof window.__glimpseIPC !== 'function') return;
+      window.__glimpseIPC('viewport-info', {
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio || 1,
+      });
+      window.addEventListener('resize', function() {
+        window.__glimpseIPC('viewport-info', {
+          screenWidth: screen.width,
+          screenHeight: screen.height,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio || 1,
+        });
+      });
+    })();
+  `;
+  wc.executeJavaScript(viewportScript).catch(() => { /* best effort */ });
+
+  /* Start search session on sessionTracker */
+  try {
+    const parsed = new URL(currentUrl);
+    const queryText = parsed.searchParams.get('q')
+      || parsed.searchParams.get('p')
+      || parsed.searchParams.get('text')
+      || parsed.searchParams.get('wd')
+      || '';
+    const bounds = mainWindow ? mainWindow.getContentBounds() : { width: 1280, height: 800 };
+    sessionTracker.startSession(tabId, {
+      engine: adapter.name,
+      queryText,
+      windowWidth: bounds.width,
+      windowHeight: bounds.height,
+      modelVersion: 'v2.0.0',
+      appVersion: app.getVersion() || '1.0.0',
+    });
+  } catch { /* best effort */ }
 }
 
 /**
- * Close the print preview overlay and clean up.
- * @param {string} [tmpPath] - Path to the temp PDF file to delete
+ * Try to do an instant swap from the pool for a navigation URL.
+ * @param {string} tabId
+ * @param {string} href - The URL being navigated to
+ * @returns {boolean} true if swap happened (caller should preventDefault)
  */
-function closePrintPreview(tmpPath) {
-  if (!printPreviewView) return;
+function tryInstantSwap(tabId, href) {
+  const ss = tabSwapState.get(tabId);
+  if (!ss) return false;
 
-  if (mainWindow) {
-    try {
-      mainWindow.contentView.removeChildView(printPreviewView);
-      if (printPreviewView._onResize) {
-        mainWindow.removeListener('resize', printPreviewView._onResize);
-      }
-    } catch {}
+  const adapter = ss.adapter;
+  const entry = pool.resolveEntry(href, adapter);
+
+  if (!entry) {
+    logger.info(`${PREFIX} [5] click: MISS`, { url: href.substring(0, 60), reason: 'not-in-pool' });
+    pool.recordMiss();
+    return false;
   }
 
-  /* Destroy the view */
-  try { printPreviewView.webContents.close(); } catch {}
-  printPreviewView = null;
-
-  /* Delete the temp PDF */
-  const fileToDelete = tmpPath || '';
-  if (fileToDelete) {
-    try { fs.unlinkSync(fileToDelete); } catch {}
+  /* Allow both 'ready' and 'loading' entries — a half-loaded page
+   * is still faster than starting navigation from scratch */
+  if (entry.state === 'failed') {
+    logger.info(`${PREFIX} [5] click: MISS`, { url: href.substring(0, 60), reason: 'failed' });
+    pool.recordMiss();
+    return false;
   }
-}
 
-/**
- * Create a new tab and load a URL.
- *
- * @param {string} [url='about:blank'] - Initial URL to load
- * @returns {string} The new tab's ID
- */
-function createTab(url = 'about:blank') {
-  const tabId = randomUUID();
+  /* ── HIT: swap the pool view into the tab area ────────────── */
+  const swapStart = Date.now();
+  const currentView = tabViews.get(tabId);
+  if (!currentView || !mainWindow) return false;
 
-  const view = new WebContentsView({
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      preload: TAB_PRELOAD_PATH,
-    },
+  logger.info(`${PREFIX} [5] click: HIT`, { url: href.substring(0, 60) });
+
+  /* Push the current view onto the view stack for Back navigation */
+  ss.viewStack.push({ view: currentView, url: currentView.webContents.getURL() });
+
+  /* Remove current view from window */
+  try { mainWindow.contentView.removeChildView(currentView); } catch { /* ok */ }
+  currentView.setVisible(false);
+
+  /* Get the pool view and set it up */
+  const poolView = entry.view;
+  const poolWc = entry.wc;
+
+  /* ── STEP 1: Bring the pool view to the top of the z-order ──────
+   * Calling addChildView on an existing child reorders it to topmost
+   * WITHOUT removing/tearing down the DirectComposition surface. */
+  mainWindow.contentView.addChildView(poolView);
+
+  /* ── STEP 2: Set bounds + make visible ───────────────────────── */
+  const bounds = mainWindow.getContentBounds();
+  poolView.setBounds({
+    x: 0,
+    y: CHROME_HEIGHT,
+    width: bounds.width || 1280,
+    height: Math.max((bounds.height || 800) - CHROME_HEIGHT, 100),
   });
+  poolView.setVisible(true);
 
-  tabViews.set(tabId, view);
+  /* Set a white background color on the view so even if the compositor hasn't
+   * painted yet the user sees white instead of black */
+  try { poolView.setBackgroundColor('#ffffff'); } catch { /* ok */ }
 
-  /* Initial tab state */
-  tabState.add({
-    id: tabId,
-    url: url,
-    title: 'New Tab',
-    favicon: null,
-    isLoading: false,
-    canGoBack: false,
+  /* ── STEP 3: Focus + unmute + ensure no background throttling ── */
+  poolWc.setBackgroundThrottling(false);
+  poolWc.setAudioMuted(false);
+  poolWc.focus();
+
+  /* ── STEP 4: Force repaint AFTER positioning and z-order are final.
+   * Do NOT set background throttling to true — this is now the active foreground tab! */
+  poolWc.invalidate();
+
+  /* Follow-up invalidate to catch slow-hydrating SPAs / late CSS */
+  setTimeout(() => {
+    if (!poolWc.isDestroyed()) {
+      poolWc.invalidate();
+    }
+  }, 100);
+
+  /* Update tab state */
+  tabViews.set(tabId, poolView);
+  ss.currentPoolHref = href;
+  tabState.setActive(tabId);
+
+  const resolvedUrl = poolWc.getURL();
+  tabState.update(tabId, {
+    url: resolvedUrl,
+    title: poolWc.getTitle() || resolvedUrl,
+    isLoading: entry.state !== 'ready',
+    canGoBack: true,
     canGoForward: false,
-    isAudioPlaying: false,
-    isMuted: false,
-    isPinned: false,
-    isSecure: url.startsWith('https://'),
-    createdAt: Date.now(),
+    isSecure: resolvedUrl.startsWith('https://'),
   });
 
-  const wc = view.webContents;
+  /* If the pool view was still loading when swapped, listen for load
+   * completion so we can force a repaint and update the loading state */
+  if (entry.state === 'loading') {
+    const onceLoad = () => {
+      if (!poolWc.isDestroyed()) {
+        poolWc.invalidate();
+        tabState.update(tabId, { isLoading: false });
+      }
+    };
+    poolWc.once('did-finish-load', onceLoad);
+  }
 
-  /* ── Navigation Events ──────────────────────────────────────── */
+  /* Attach standard tab event listeners to the swapped-in view */
+  attachTabListeners(tabId, poolView, poolWc);
+
+  /* Detach from pool (don't destroy — we're using it now) */
+  pool.detachUrl(href);
+  poolWc._glimpseTabId = tabId;
+
+  const swapMs = Date.now() - swapStart;
+  pool.recordHit(swapMs);
+  logger.info(`${PREFIX} [6] swap done`, { ms: swapMs, url: resolvedUrl.substring(0, 60) });
+
+  /* Record click on sessionTracker */
+  sessionTracker.recordLinkClick(tabId, href, {
+    clickClass: entry.state === 'ready' ? 'HIT_READY' : 'HIT_LOADING',
+    msToUsable: swapMs,
+  });
+
+  /* Add to history */
+  try {
+    if (resolvedUrl !== 'about:blank' && !resolvedUrl.startsWith('data:')) {
+      history.addEntry(resolvedUrl, poolWc.getTitle() || resolvedUrl, null, 'prefetch-swap');
+      const tel = getTelemetry();
+      if (tel) tel.logHistoryVisit({ url: resolvedUrl, title: poolWc.getTitle(), source: 'prefetch-swap' });
+    }
+  } catch { /* best effort */ }
+
+  return true;
+}
+
+/**
+ * Attach standard navigation/media/keyboard event listeners to a tab view.
+ * Used for both newly created tabs and swapped-in pool views.
+ * @param {string} tabId
+ * @param {Electron.WebContentsView} view
+ * @param {Electron.WebContents} wc
+ */
+function attachTabListeners(tabId, view, wc) {
+  /* Guard against double-attaching — pool views get this called on swap,
+   * but may still have listeners from a previous attachTabListeners call */
+  if (wc._glimpseTabListenersAttached) return;
+  wc._glimpseTabListenersAttached = true;
 
   wc.on('did-start-loading', () => {
     tabState.update(tabId, { isLoading: true });
@@ -234,12 +376,17 @@ function createTab(url = 'about:blank') {
 
     /* Reset prefetch state on navigation */
     prefetchScheduler.onPageNavigate();
+    sessionTracker.onTabNavigated(tabId);
 
     /* Add to browsing history */
     try {
       const title = wc.getTitle() || navUrl;
       if (navUrl !== 'about:blank' && !navUrl.startsWith('data:')) {
         history.addEntry(navUrl, title, null, 'direct');
+        const tel = getTelemetry();
+        if (tel) {
+          tel.logHistoryVisit({ url: navUrl, title, source: 'direct' });
+        }
       }
     } catch {
       /* Best effort */
@@ -252,6 +399,9 @@ function createTab(url = 'about:blank') {
       canGoBack: wc.canGoBack(),
       canGoForward: wc.canGoForward(),
     });
+
+    /* Re-inject detector on in-page navigation (search engines use pushState) */
+    injectDetectorIfSearch(wc, tabId);
   });
 
   wc.on('page-title-updated', (_event, title) => {
@@ -265,67 +415,13 @@ function createTab(url = 'about:blank') {
   });
 
   wc.on('did-finish-load', () => {
-    const currentUrl = wc.getURL();
-
-    /* Check if this is a search results page */
-    const adapter = getAdapter(currentUrl);
-    if (adapter) {
-      logger.info('Search results page detected', { engine: adapter.name, url: currentUrl });
-
-      /* Set the engine for the prefetch scheduler */
-      prefetchScheduler.setCurrentEngine(adapter.name);
-
-      /* Inject visibility detector script */
-      const script = buildVisibilityDetectorScript(adapter.resultLinkSelector);
-      wc.executeJavaScript(script).catch((err) => {
-        logger.error('Failed to inject visibility detector', { message: err.message });
-      });
-
-      /* Inject viewport info reporter (screen resolution, window size) */
-      const viewportScript = `
-        (function() {
-          if (typeof window.__glimpseIPC !== 'function') return;
-          window.__glimpseIPC('viewport-info', {
-            screenWidth: screen.width,
-            screenHeight: screen.height,
-            windowWidth: window.innerWidth,
-            windowHeight: window.innerHeight,
-            devicePixelRatio: window.devicePixelRatio || 1,
-          });
-          window.addEventListener('resize', function() {
-            window.__glimpseIPC('viewport-info', {
-              screenWidth: screen.width,
-              screenHeight: screen.height,
-              windowWidth: window.innerWidth,
-              windowHeight: window.innerHeight,
-              devicePixelRatio: window.devicePixelRatio || 1,
-            });
-          });
-        })();
-      `;
-      wc.executeJavaScript(viewportScript).catch(() => { /* best effort */ });
-
-      /* Log search event for telemetry */
-      try {
-        const tel = getTelemetry();
-        if (tel) {
-          /* Extract query from the URL */
-          const parsed = new URL(currentUrl);
-          const queryText = parsed.searchParams.get('q')
-            || parsed.searchParams.get('p')
-            || parsed.searchParams.get('text')
-            || parsed.searchParams.get('wd')
-            || '';
-          tel.logSearchEvent({
-            searchEngine: adapter.name,
-            queryText,
-          });
-        }
-      } catch { /* best effort */ }
-    }
+    injectDetectorIfSearch(wc, tabId);
+    /* Track miss render-time for pages that weren't a pool HIT */
+    try { prefetchScheduler.onPageLoaded(wc.getURL()); } catch { /* best effort */ }
   });
 
-  wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+  wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return; /* Ignore sub-frame / ad / tracker failures */
     if (errorCode === -3) return; /* ERR_ABORTED — user navigated away */
 
     const errorCodeStr = errorDescription || `ERR_${Math.abs(errorCode)}`;
@@ -344,12 +440,31 @@ function createTab(url = 'about:blank') {
     tabState.update(tabId, { isAudioPlaying: false });
   });
 
-  /* ── New Window Handling ────────────────────────────────────── */
+  /* ── New Window / Navigation Interception ──────────────────── */
 
   wc.setWindowOpenHandler(({ url: openUrl }) => {
+    /* Try instant swap for pool hit */
+    if (tryInstantSwap(tabId, openUrl)) {
+      return { action: 'deny' };
+    }
     /* Open in a new tab instead of a new window */
     createTab(openUrl);
     return { action: 'deny' };
+  });
+
+  /* Intercept will-navigate for instant swap on search result clicks */
+  wc.on('will-navigate', (event, navUrl) => {
+    /* Only intercept if we're on a search results page */
+    const ss = tabSwapState.get(tabId);
+    if (ss && ss.adapter) {
+      const currentUrl = wc.getURL();
+      /* Don't intercept navigation FROM a non-search page */
+      if (isSearchResultsPage(currentUrl)) {
+        if (tryInstantSwap(tabId, navUrl)) {
+          event.preventDefault();
+        }
+      }
+    }
   });
 
   /* ── Context Menu (Chrome-style) ─────────────────────────────── */
@@ -364,7 +479,7 @@ function createTab(url = 'about:blank') {
       label: 'Back',
       accelerator: 'Alt+Left',
       enabled: wc.navigationHistory.canGoBack(),
-      click: () => wc.goBack()
+      click: () => goBack(tabId)
     }));
 
     menu.append(new MenuItem({
@@ -500,6 +615,124 @@ function createTab(url = 'about:blank') {
       openPrintPreview(wc);
     }
   });
+}
+
+/**
+ * Open a print preview as an inline overlay inside the main window.
+ * @param {Electron.WebContents} webContents
+ */
+let printPreviewView = null;
+
+function openPrintPreview(webContents) {
+  if (printPreviewView) return;
+
+  webContents.printToPDF({ printBackground: true }).then((pdfData) => {
+    const tmpPath = path.join(app.getPath('temp'), `glimpse-print-${Date.now()}.pdf`);
+    fs.writeFileSync(tmpPath, pdfData);
+
+    printPreviewView = new WebContentsView({
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    if (mainWindow) {
+      let { width, height } = mainWindow.getContentBounds();
+      if (width === 0 || height === 0) { width = 1280; height = 800; }
+      printPreviewView.setBounds({ x: 0, y: CHROME_HEIGHT, width, height: height - CHROME_HEIGHT });
+      mainWindow.contentView.addChildView(printPreviewView);
+    }
+
+    printPreviewView.webContents.loadURL(`file://${tmpPath.replace(/\\/g, '/')}`);
+
+    printPreviewView.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'Escape' && input.type === 'keyDown') {
+        closePrintPreview(tmpPath);
+      }
+    });
+
+    const onResize = () => {
+      if (!printPreviewView || !mainWindow) return;
+      let { width, height } = mainWindow.getContentBounds();
+      if (width === 0 || height === 0) { width = 1280; height = 800; }
+      printPreviewView.setBounds({ x: 0, y: CHROME_HEIGHT, width, height: height - CHROME_HEIGHT });
+    };
+    mainWindow.on('resize', onResize);
+
+    printPreviewView._onResize = onResize;
+    printPreviewView._tmpPath = tmpPath;
+
+  }).catch((err) => {
+    logger.error('Print preview failed', { message: err.message });
+  });
+}
+
+function closePrintPreview(tmpPath) {
+  if (!printPreviewView) return;
+
+  if (mainWindow) {
+    try {
+      mainWindow.contentView.removeChildView(printPreviewView);
+      if (printPreviewView._onResize) {
+        mainWindow.removeListener('resize', printPreviewView._onResize);
+      }
+    } catch {}
+  }
+
+  try { printPreviewView.webContents.close(); } catch {}
+  printPreviewView = null;
+
+  const fileToDelete = tmpPath || '';
+  if (fileToDelete) {
+    try { fs.unlinkSync(fileToDelete); } catch {}
+  }
+}
+
+/**
+ * Create a new tab and load a URL.
+ *
+ * @param {string} [url='about:blank'] - Initial URL to load
+ * @returns {string} The new tab's ID
+ */
+function createTab(url = 'about:blank') {
+  const tabId = randomUUID();
+
+  const view = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: TAB_PRELOAD_PATH,
+    },
+  });
+
+  tabViews.set(tabId, view);
+
+  /* Initialize swap state for this tab */
+  tabSwapState.set(tabId, { viewStack: [], currentPoolHref: null, adapter: null });
+
+  /* Initial tab state */
+  tabState.add({
+    id: tabId,
+    url: url,
+    title: 'New Tab',
+    favicon: null,
+    isLoading: false,
+    canGoBack: false,
+    canGoForward: false,
+    isAudioPlaying: false,
+    isMuted: false,
+    isPinned: false,
+    isSecure: url.startsWith('https://'),
+    createdAt: Date.now(),
+  });
+
+  const wc = view.webContents;
+  wc._glimpseTabId = tabId;
+
+  /* Attach all event listeners */
+  attachTabListeners(tabId, view, wc);
 
   /* ── Position the view ──────────────────────────────────────── */
 
@@ -516,7 +749,6 @@ function createTab(url = 'about:blank') {
       height: height - CHROME_HEIGHT,
     });
 
-    /* Only add and show if this is the first tab or we're making it active */
     mainWindow.contentView.addChildView(view);
   }
 
@@ -544,6 +776,23 @@ function createTab(url = 'about:blank') {
 function closeTab(tabId) {
   const view = tabViews.get(tabId);
   if (!view) return;
+
+  /* Clean up pool entries and swap state — destroy all pool entries */
+  pool.clearAll();
+  prefetchScheduler.onPageNavigate();
+  sessionTracker.onTabClosed(tabId);
+  const ss = tabSwapState.get(tabId);
+  if (ss) {
+    /* Close all stacked views */
+    for (const item of ss.viewStack) {
+      try {
+        if (!item.view.webContents.isDestroyed()) {
+          item.view.webContents.close();
+        }
+      } catch { /* ok */ }
+    }
+    tabSwapState.delete(tabId);
+  }
 
   /* Remove from window */
   if (mainWindow) {
@@ -594,9 +843,57 @@ function navigate(tabId, url) {
 
 /**
  * Go back in the tab's navigation history.
+ * Checks the view stack first (for swapped pool views), then webContents history.
  * @param {string} tabId
  */
 function goBack(tabId) {
+  const ss = tabSwapState.get(tabId);
+
+  /* If we have swapped views on the stack, pop back to the previous one */
+  if (ss && ss.viewStack.length > 0) {
+    const currentView = tabViews.get(tabId);
+    const prev = ss.viewStack.pop();
+
+    if (currentView && mainWindow) {
+      try { mainWindow.contentView.removeChildView(currentView); } catch { /* ok */ }
+      currentView.setVisible(false);
+      /* Destroy the swapped-in view since we're going back */
+      try {
+        if (!currentView.webContents.isDestroyed()) {
+          currentView.webContents.close();
+        }
+      } catch { /* ok */ }
+    }
+
+    /* Restore previous view */
+    tabViews.set(tabId, prev.view);
+    if (mainWindow) {
+      const bounds = mainWindow.getContentBounds();
+      prev.view.setBounds({
+        x: 0,
+        y: CHROME_HEIGHT,
+        width: bounds.width,
+        height: bounds.height - CHROME_HEIGHT,
+      });
+      mainWindow.contentView.addChildView(prev.view);
+      prev.view.setVisible(true);
+      prev.view.webContents.focus();
+    }
+
+    tabState.update(tabId, {
+      url: prev.url,
+      title: prev.view.webContents.getTitle() || prev.url,
+      canGoBack: prev.view.webContents.canGoBack() || ss.viewStack.length > 0,
+      canGoForward: true,
+      isSecure: prev.url.startsWith('https://'),
+    });
+
+    ss.currentPoolHref = null;
+    logger.info(`${PREFIX} goBack: popped view stack`, { url: prev.url });
+    return;
+  }
+
+  /* Normal webContents back */
   const view = tabViews.get(tabId);
   if (!view || view.webContents.isDestroyed()) return;
   if (view.webContents.canGoBack()) {
@@ -640,9 +937,7 @@ function setActiveTab(tabId) {
   /* Hide all other tab views, show the target */
   for (const [id, view] of tabViews) {
     if (id === tabId) {
-      /* Hide tab view for about:blank so chrome NTP overlay is clickable */
       view.setVisible(!isBlank);
-      /* Resize to fit the window */
       if (mainWindow) {
         const bounds = mainWindow.getContentBounds();
         view.setBounds({
@@ -714,10 +1009,15 @@ function onWindowResize() {
       view.setBounds({
         x: 0,
         y: CHROME_HEIGHT,
-        width: bounds.width,
-        height: bounds.height - CHROME_HEIGHT,
+        width: bounds.width || 1280,
+        height: Math.max((bounds.height || 800) - CHROME_HEIGHT, 100),
       });
     }
+  }
+
+  /* Keep all pooled views in sync with the window size */
+  if (pool && typeof pool.onWindowResize === 'function') {
+    pool.onWindowResize(bounds);
   }
 }
 
@@ -732,19 +1032,15 @@ function getTabView(tabId) {
 
 /**
  * Set the overlay active state.
- * When true, brings the chrome view to the top so modals/dropdowns render over the webpage.
- * When false, brings the active tab back to the top.
  * @param {boolean} active 
  */
 function setOverlayActive(active) {
   if (!mainWindow || !chromeView) return;
 
   if (active) {
-    /* Bring chrome view to front */
     mainWindow.contentView.removeChildView(chromeView);
     mainWindow.contentView.addChildView(chromeView);
   } else {
-    /* Bring active tab view to front */
     const activeTabId = tabState.getActiveId();
     if (activeTabId) {
       const view = tabViews.get(activeTabId);

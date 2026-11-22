@@ -28,4 +28,15 @@ module.exports = Object.freeze({
       return null;
     }
   },
+
+  resolveDestination(href) {
+    try {
+      const match = href.match(/\/RU=([^/]+)/);
+      if (match) {
+        const decoded = decodeURIComponent(match[1]);
+        if (decoded.startsWith('http')) return decoded;
+      }
+    } catch { /* fall through */ }
+    return href;
+  },
 });

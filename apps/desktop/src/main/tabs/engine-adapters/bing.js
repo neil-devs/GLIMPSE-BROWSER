@@ -28,4 +28,20 @@ module.exports = Object.freeze({
       return null;
     }
   },
+
+  resolveDestination(href) {
+    try {
+      const parsed = new URL(href);
+      const u = parsed.searchParams.get('u');
+      if (u) {
+        const payload = u.startsWith('a1') ? u.slice(2) : u;
+        if (payload.startsWith('http')) return payload;
+        try {
+          const decoded = Buffer.from(payload, 'base64url').toString('utf-8');
+          if (decoded.startsWith('http')) return decoded;
+        } catch { /* not base64 */ }
+      }
+    } catch { /* fall through */ }
+    return href;
+  },
 });
